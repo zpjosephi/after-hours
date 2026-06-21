@@ -1,32 +1,76 @@
 "use client";
 
 import { Canvas, useFrame } from "@react-three/fiber";
-import { Clouds, Cloud, Float, OrbitControls, Sky, Sparkles } from "@react-three/drei";
-import { EffectComposer, Bloom, Vignette, DepthOfField } from "@react-three/postprocessing";
-import { Suspense, useMemo, useRef } from "react";
+import {
+  Clouds,
+  Cloud,
+  Float,
+  OrbitControls,
+  Sky,
+  Sparkles,
+  Environment,
+  Lightformer,
+} from "@react-three/drei";
+import {
+  EffectComposer,
+  Bloom,
+  Vignette,
+  DepthOfField,
+  GodRays,
+  ChromaticAberration,
+  Noise,
+} from "@react-three/postprocessing";
+import { BlendFunction } from "postprocessing";
+import { Suspense, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 
-/* Jagged rock geometry: displace an icosahedron's vertices with cheap noise. */
+/* ---------------- Rock geometry: FBM-displaced icosahedron, grass on top ---------------- */
 function useRockGeometry(radius: number, detail: number, amp: number) {
   return useMemo(() => {
     const geo = new THREE.IcosahedronGeometry(radius, detail);
     const pos = geo.attributes.position;
     const v = new THREE.Vector3();
+    const colors: number[] = [];
+    const brown = new THREE.Color("#6d4f35");
+    const brownDark = new THREE.Color("#4a3623");
+    const grass = new THREE.Color("#6f8a3f");
+
+    const hash = (x: number, y: number, z: number) =>
+      ((Math.sin(x * 12.9898 + y * 78.233 + z * 37.719) * 43758.5453) % 1 + 1) % 1;
+    const fbm = (x: number, y: number, z: number) => {
+      let val = 0;
+      let a = 0.5;
+      let f = 1;
+      for (let o = 0; o < 4; o++) {
+        val += a * (hash(Math.floor(x * f), Math.floor(y * f), Math.floor(z * f)) - 0.5);
+        f *= 2;
+        a *= 0.5;
+      }
+      return val;
+    };
+
     for (let i = 0; i < pos.count; i++) {
       v.fromBufferAttribute(pos, i);
       const n = v.clone().normalize();
       const noise =
-        Math.sin(v.x * 3.1 + v.y * 2.3) * Math.cos(v.z * 2.7 + v.x * 1.7) * 0.6 +
-        Math.sin(v.y * 5.3 + v.z * 1.9) * 0.3;
+        Math.sin(v.x * 3.1 + v.y * 2.3) * Math.cos(v.z * 2.7 + v.x * 1.7) * 0.5 +
+        fbm(v.x * 2.0, v.y * 2.0, v.z * 2.0) * 1.4;
       v.addScaledVector(n, noise * amp);
       pos.setXYZ(i, v.x, v.y, v.z);
+
+      // grass on the upper, near-flat top; rock on the sides/underside
+      const up = THREE.MathUtils.clamp((v.y / radius + 0.15) * 1.4, 0, 1);
+      const grassMask = THREE.MathUtils.smoothstep(up, 0.55, 0.85);
+      const c = brown.clone().lerp(brownDark, 0.5 - v.y / (radius * 2));
+      c.lerp(grass, grassMask);
+      colors.push(c.r, c.g, c.b);
     }
+    geo.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
     geo.computeVertexNormals();
     return geo;
   }, [radius, detail, amp]);
 }
 
-/* ---------------- Floating island ---------------- */
 function Island({
   position,
   scale = 1,
@@ -36,97 +80,119 @@ function Island({
   scale?: number;
   floatSpeed?: number;
 }) {
-  const rock = useRockGeometry(1.1, 3, 0.16);
-  const cap = useRockGeometry(1.04, 3, 0.06);
-
+  const geo = useRockGeometry(1.1, 4, 0.2);
   return (
-    <Float speed={floatSpeed} rotationIntensity={0.12} floatIntensity={0.8} floatingRange={[-0.3, 0.3]}>
-      <group position={position} scale={scale}>
-        {/* rock body, stretched downward into a chunk */}
-        <mesh castShadow geometry={rock} position={[0, -0.25, 0]} scale={[1, 1.55, 1]}>
-          <meshStandardMaterial color="#6b4f37" roughness={1} metalness={0} flatShading />
-        </mesh>
-        {/* grassy crown */}
-        <mesh geometry={cap} position={[0, 0.5, 0]} scale={[1, 0.5, 1]}>
-          <meshStandardMaterial color="#6f8a40" roughness={1} flatShading />
-        </mesh>
-      </group>
+    <Float speed={floatSpeed} rotationIntensity={0.1} floatIntensity={0.8} floatingRange={[-0.3, 0.3]}>
+      <mesh geometry={geo} position={position} scale={[scale, scale * 1.45, scale]} castShadow receiveShadow>
+        <meshStandardMaterial vertexColors flatShading roughness={1} metalness={0} />
+      </mesh>
     </Float>
   );
 }
 
-/* ---------------- Particle waterfall ---------------- */
-function Waterfall({
+/* ---------------- GLSL water shader ---------------- */
+const WATER_VERT = /* glsl */ `
+  varying vec2 vUv;
+  void main() {
+    vUv = uv;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+const WATER_FRAG = /* glsl */ `
+  varying vec2 vUv;
+  uniform float uTime;
+
+  float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453); }
+  float noise(vec2 p){
+    vec2 i=floor(p); vec2 f=fract(p);
+    f=f*f*(3.0-2.0*f);
+    float a=hash(i), b=hash(i+vec2(1.0,0.0)), c=hash(i+vec2(0.0,1.0)), d=hash(i+vec2(1.0,1.0));
+    return mix(mix(a,b,f.x), mix(c,d,f.x), f.y);
+  }
+  float fbm(vec2 p){ float v=0.0, a=0.5; for(int i=0;i<5;i++){ v+=a*noise(p); p*=2.0; a*=0.5; } return v; }
+
+  void main(){
+    vec2 uv = vUv;
+    float t = uTime;
+    // streaks flowing downward (uv.y: 1 = top/lip, 0 = bottom)
+    float flow    = fbm(vec2(uv.x*6.0,  uv.y*9.0  + t*2.4));
+    float streaks = fbm(vec2(uv.x*22.0, uv.y*4.0  + t*3.6));
+    float water = flow*0.55 + streaks*0.55;
+
+    vec3 colA = vec3(0.74, 0.88, 1.0);
+    vec3 colB = vec3(0.96, 0.99, 1.0);
+    vec3 col = mix(colA, colB, water);
+
+    // foam at the lip and a glow throughout
+    float lipFoam = smoothstep(0.82, 1.0, uv.y);
+    col = mix(col, vec3(1.0), lipFoam*0.85);
+
+    // horizontal edge falloff + bottom fade into mist
+    float edge = smoothstep(0.0,0.16,uv.x) * smoothstep(1.0,0.84,uv.x);
+    float alpha = (0.32 + water*0.7) * edge * smoothstep(0.0,0.22,uv.y);
+
+    gl_FragColor = vec4(col, alpha);
+  }
+`;
+
+function ShaderWaterfall({
   position,
+  width = 1.2,
   height = 6,
-  count = 700,
 }: {
   position: [number, number, number];
+  width?: number;
   height?: number;
-  count?: number;
 }) {
-  const ref = useRef<THREE.Points>(null);
-  const { positions, speeds } = useMemo(() => {
-    const positions = new Float32Array(count * 3);
-    const speeds = new Float32Array(count);
-    for (let i = 0; i < count; i++) {
-      positions[i * 3] = (Math.random() - 0.5) * 0.6;
-      positions[i * 3 + 1] = -Math.random() * height;
-      positions[i * 3 + 2] = (Math.random() - 0.5) * 0.4;
-      speeds[i] = 3 + Math.random() * 4;
-    }
-    return { positions, speeds };
-  }, [count, height]);
-
-  useFrame((_, dt) => {
-    const p = ref.current;
-    if (!p) return;
-    const arr = p.geometry.attributes.position.array as Float32Array;
-    for (let i = 0; i < count; i++) {
-      arr[i * 3 + 1] -= speeds[i] * Math.min(dt, 0.05);
-      arr[i * 3] *= 1.0015;
-      if (arr[i * 3 + 1] < -height) {
-        arr[i * 3 + 1] = 0;
-        arr[i * 3] = (Math.random() - 0.5) * 0.6;
-      }
-    }
-    p.geometry.attributes.position.needsUpdate = true;
+  const uniforms = useMemo(() => ({ uTime: { value: 0 } }), []);
+  useFrame((state) => {
+    uniforms.uTime.value = state.clock.elapsedTime;
   });
-
   return (
-    <points ref={ref} position={position}>
-      <bufferGeometry>
-        <bufferAttribute attach="attributes-position" args={[positions, 3]} />
-      </bufferGeometry>
-      <pointsMaterial
-        size={0.1}
-        color="#dff1ff"
-        transparent
-        opacity={1}
-        depthWrite={false}
-        blending={THREE.AdditiveBlending}
-        sizeAttenuation
-      />
-    </points>
+    <group position={position}>
+      {[0, Math.PI / 2].map((ry, i) => (
+        <mesh key={i} rotation={[0, ry, 0]}>
+          <planeGeometry args={[width, height, 1, 1]} />
+          <shaderMaterial
+            uniforms={uniforms}
+            vertexShader={WATER_VERT}
+            fragmentShader={WATER_FRAG}
+            transparent
+            depthWrite={false}
+            side={THREE.DoubleSide}
+            toneMapped={false}
+          />
+        </mesh>
+      ))}
+    </group>
   );
 }
 
 /* ---------------- Scene ---------------- */
 function Scene() {
+  const [sun, setSun] = useState<THREE.Mesh | null>(null);
+
   return (
     <>
-      <fog attach="fog" args={["#cdac8a", 13, 40]} />
-      <Sky sunPosition={[12, 1.2, -8]} turbidity={12} rayleigh={1.1} mieCoefficient={0.02} mieDirectionalG={0.96} />
+      <fog attach="fog" args={["#cdac8a", 13, 42]} />
+      <Sky sunPosition={[12, 1.2, -8]} turbidity={11} rayleigh={1.0} mieCoefficient={0.02} mieDirectionalG={0.96} />
 
-      {/* glowing sun disc to anchor the bloom */}
-      <mesh position={[34, 3.4, -22]}>
+      {/* PBR lighting environment baked once from lightformers (no network) */}
+      <Environment resolution={256} frames={1}>
+        <Lightformer intensity={3} color="#ffd9a8" position={[10, 5, -8]} scale={[12, 12, 1]} />
+        <Lightformer intensity={0.7} color="#8fb0d0" position={[-12, 2, 6]} scale={[12, 12, 1]} />
+        <Lightformer intensity={0.5} color="#ffffff" position={[0, -8, 0]} rotation={[Math.PI / 2, 0, 0]} scale={[20, 20, 1]} />
+      </Environment>
+
+      {/* sun disc — both a visible light source and the god-ray origin */}
+      <mesh ref={setSun} position={[34, 3.4, -22]}>
         <sphereGeometry args={[3, 24, 24]} />
         <meshBasicMaterial color="#fff1cf" toneMapped={false} />
       </mesh>
 
-      <ambientLight intensity={0.3} />
-      <hemisphereLight args={["#ffe6c2", "#3a4763", 0.5]} />
-      <directionalLight position={[10, 3, -6]} intensity={3.4} color="#ffc98a" castShadow />
+      <ambientLight intensity={0.28} />
+      <hemisphereLight args={["#ffe6c2", "#3a4763", 0.45]} />
+      <directionalLight position={[10, 3, -6]} intensity={3.2} color="#ffc98a" castShadow shadow-mapSize={[1024, 1024]} />
 
       {/* floating islands */}
       <Island position={[0, 0.5, 0]} scale={1.2} floatSpeed={1.1} />
@@ -136,24 +202,24 @@ function Scene() {
       <Island position={[2.5, 4.2, -6]} scale={0.6} floatSpeed={0.7} />
       <Island position={[-6.5, -0.5, -7]} scale={0.5} floatSpeed={0.9} />
 
-      {/* waterfalls into the cloud sea */}
-      <Waterfall position={[0.2, -0.9, 0.4]} height={6} />
-      <Waterfall position={[4.2, -2.7, -1.8]} height={4.5} count={450} />
+      {/* shader waterfalls into the cloud sea */}
+      <ShaderWaterfall position={[0.2, -3.3, 0.4]} width={1.3} height={6} />
+      <ShaderWaterfall position={[4.2, -4.6, -1.8]} width={1.0} height={4.6} />
 
-      {/* drifting dust motes catching the light */}
-      <Sparkles count={120} scale={[22, 12, 22]} size={3} speed={0.3} opacity={0.5} color="#ffe9c8" />
+      {/* drifting dust motes */}
+      <Sparkles count={140} scale={[24, 13, 24]} size={3} speed={0.3} opacity={0.5} color="#ffe9c8" />
 
       {/* volumetric cloud sea + mist at the waterfall bases */}
       <Clouds material={THREE.MeshBasicMaterial} limit={500}>
         <Cloud seed={1} bounds={[28, 3, 18]} volume={10} segments={60} color="#fff4e2" opacity={0.85} fade={32} speed={0.15} position={[0, -6.5, -2]} />
         <Cloud seed={7} bounds={[24, 2, 14]} volume={8} segments={48} color="#e7d3b6" opacity={0.7} fade={32} speed={0.1} position={[2, -8, -6]} />
-        <Cloud seed={3} bounds={[4, 1.5, 4]} volume={4} segments={24} color="#ffffff" opacity={0.95} fade={10} speed={0.25} position={[0.4, -7, 0.2]} />
-        <Cloud seed={9} bounds={[3, 1.2, 3]} volume={3} segments={20} color="#ffffff" opacity={0.9} fade={10} speed={0.3} position={[4.2, -7.2, -1.8]} />
+        <Cloud seed={3} bounds={[4, 1.5, 4]} volume={4} segments={24} color="#ffffff" opacity={0.95} fade={10} speed={0.25} position={[0.4, -6.6, 0.2]} />
+        <Cloud seed={9} bounds={[3, 1.2, 3]} volume={3} segments={20} color="#ffffff" opacity={0.9} fade={10} speed={0.3} position={[4.2, -7, -1.8]} />
       </Clouds>
 
       <OrbitControls
         autoRotate
-        autoRotateSpeed={0.35}
+        autoRotateSpeed={0.32}
         enablePan={false}
         enableZoom
         minPolarAngle={Math.PI / 3}
@@ -163,11 +229,16 @@ function Scene() {
         target={[0, 0, 0]}
       />
 
-      <EffectComposer>
-        <DepthOfField target={[0, 0.5, 0]} focalLength={0.018} bokehScale={2.5} height={480} />
-        <Bloom intensity={0.85} luminanceThreshold={0.75} luminanceSmoothing={0.25} mipmapBlur />
-        <Vignette eskil={false} offset={0.3} darkness={0.85} />
-      </EffectComposer>
+      {sun && (
+        <EffectComposer>
+          <GodRays sun={sun} samples={60} density={0.95} decay={0.93} weight={0.5} exposure={0.4} clampMax={1} blur />
+          <Bloom intensity={0.8} luminanceThreshold={0.75} luminanceSmoothing={0.25} mipmapBlur />
+          <DepthOfField target={[0, 0.5, 0]} focalLength={0.02} bokehScale={2.5} height={420} />
+          <ChromaticAberration blendFunction={BlendFunction.NORMAL} offset={[0.0008, 0.0008]} />
+          <Noise premultiply blendFunction={BlendFunction.OVERLAY} opacity={0.22} />
+          <Vignette eskil={false} offset={0.3} darkness={0.85} />
+        </EffectComposer>
+      )}
     </>
   );
 }
