@@ -27,3 +27,107 @@ body {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
   background-size: 180px 180px;
 }
+
+/* ============================================================
+   Concept sketch: infinite floating islands + waterfall (/waterfall)
+   Pure CSS/SVG composition study, not a render. Used to lock the
+   framing/vibe before generating the real clip with an AI tool.
+   ============================================================ */
+@keyframes wf-fall {
+  to {
+    background-position-y: 240px;
+  }
+}
+@keyframes cloud-drift {
+  from {
+    transform: translateX(-4%);
+  }
+  to {
+    transform: translateX(4%);
+  }
+}
+@keyframes soft-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-14px);
+  }
+}
+@keyframes mist-pulse {
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 0.85;
+  }
+}
+
+.scene-sky {
+  background:
+    radial-gradient(115% 75% at 50% 118%, rgba(255, 216, 173, 0.55), transparent 60%),
+    linear-gradient(
+      to bottom,
+      #14213a 0%,
+      #2a3a59 32%,
+      #5d6582 56%,
+      #b29a86 80%,
+      #ecd9bf 100%
+    );
+}
+
+.cloud {
+  background: radial-gradient(
+    50% 50% at 50% 50%,
+    rgba(255, 248, 238, 0.95),
+    rgba(255, 248, 238, 0) 70%
+  );
+  filter: blur(10px);
+  animation: cloud-drift 22s ease-in-out infinite alternate;
+}
+
+.rock {
+  background: linear-gradient(102deg, #2f231c 0%, #5b4636 46%, #281d18 100%);
+  box-shadow: inset 0 6px 14px rgba(255, 224, 188, 0.25);
+}
+.grass {
+  background: linear-gradient(to bottom, #76823f 0%, #56612c 55%, rgba(86, 97, 44, 0) 100%);
+}
+.float {
+  animation: soft-float 9s ease-in-out infinite;
+}
+
+.waterfall {
+  background-image: repeating-linear-gradient(
+    to bottom,
+    rgba(255, 255, 255, 0) 0px,
+    rgba(255, 255, 255, 0.55) 5px,
+    rgba(255, 255, 255, 0) 13px
+  );
+  background-size: 100% 240px;
+  filter: blur(1.2px);
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 10%, #000 82%, transparent);
+  mask-image: linear-gradient(to bottom, transparent, #000 10%, #000 82%, transparent);
+  animation: wf-fall 1.05s linear infinite;
+}
+
+.mist {
+  background: radial-gradient(60% 100% at 50% 50%, rgba(255, 255, 255, 0.9), transparent 70%);
+  filter: blur(12px);
+  animation: mist-pulse 6s ease-in-out infinite;
+}
+
+.vignette {
+  background: radial-gradient(120% 100% at 50% 42%, transparent 52%, rgba(0, 0, 0, 0.68) 100%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cloud,
+  .waterfall,
+  .mist,
+  .float {
+    animation: none !important;
+  }
+}
