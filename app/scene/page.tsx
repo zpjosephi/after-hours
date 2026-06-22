@@ -633,10 +633,10 @@ function Stream() {
   const mat = useMemo(() => {
     const m = new THREE.MeshStandardMaterial({
       color: "#ffffff",
-      transparent: false, // opaque so it never mis-sorts against the falls (no teal bands)
-      roughness: 0.12,
+      transparent: false, // opaque so it never mis-sorts against the falls
+      roughness: 0.55, // matte water, not a chrome mirror
       metalness: 0,
-      envMapIntensity: 1.0,
+      envMapIntensity: 0.25,
       side: THREE.DoubleSide,
     });
     m.onBeforeCompile = (sh) => {
