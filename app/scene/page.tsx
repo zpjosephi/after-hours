@@ -926,8 +926,8 @@ function Person({
     const hips = bones.current.hips;
     if (!g || !hips) return;
     hips.getWorldPosition(tmpA);
-    tmpA.x += Math.sin(rotation) * 0.45; // forward onto the lap, keyboard under the hands
-    tmpA.z += Math.cos(rotation) * 0.45;
+    tmpA.x += Math.sin(rotation) * 0.5; // forward onto the lap, keyboard under the hands
+    tmpA.z += Math.cos(rotation) * 0.5;
     tmpA.y += 0.03; // rest on top of the thighs, not clipping into them
     if (g.parent) g.parent.worldToLocal(tmpA);
     g.position.copy(tmpA);
