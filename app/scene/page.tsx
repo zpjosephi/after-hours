@@ -856,11 +856,23 @@ function Coder({
   rotation?: number;
 }) {
   const skin = useMemo(
-    () => new THREE.MeshStandardMaterial({ color: "#262530", roughness: 0.95, metalness: 0 }),
+    () => new THREE.MeshStandardMaterial({ color: "#c08f68", roughness: 0.7, metalness: 0 }),
+    []
+  );
+  const hair = useMemo(
+    () => new THREE.MeshStandardMaterial({ color: "#2c2018", roughness: 0.85, metalness: 0 }),
+    []
+  );
+  const shirt = useMemo(
+    () => new THREE.MeshStandardMaterial({ color: "#496077", roughness: 0.85, metalness: 0 }),
+    []
+  );
+  const pants = useMemo(
+    () => new THREE.MeshStandardMaterial({ color: "#33373f", roughness: 0.9, metalness: 0 }),
     []
   );
   const metal = useMemo(
-    () => new THREE.MeshStandardMaterial({ color: "#2a2c33", roughness: 0.5, metalness: 0.6 }),
+    () => new THREE.MeshStandardMaterial({ color: "#3a3d44", roughness: 0.45, metalness: 0.6 }),
     []
   );
   const screen = useMemo(
@@ -876,30 +888,39 @@ function Coder({
   );
   return (
     <group position={position} scale={scale} rotation={[0, rotation, 0]}>
-      {/* hips + cross-legged lap */}
-      <mesh material={skin} position={[0, 0.15, 0]} castShadow>
+      {/* hips + cross-legged lap (trousers) */}
+      <mesh material={pants} position={[0, 0.15, 0]} castShadow>
         <boxGeometry args={[0.24, 0.16, 0.3]} />
       </mesh>
-      <mesh material={skin} position={[0.22, 0.1, 0.13]} rotation={[0, 0, -1.45]} castShadow>
+      <mesh material={pants} position={[0.22, 0.1, 0.13]} rotation={[0, 0, -1.45]} castShadow>
         <capsuleGeometry args={[0.07, 0.28, 4, 8]} />
       </mesh>
-      <mesh material={skin} position={[0.22, 0.1, -0.13]} rotation={[0, 0, -1.45]} castShadow>
+      <mesh material={pants} position={[0.22, 0.1, -0.13]} rotation={[0, 0, -1.45]} castShadow>
         <capsuleGeometry args={[0.07, 0.28, 4, 8]} />
       </mesh>
-      {/* torso hunched over the screen */}
-      <mesh material={skin} position={[-0.02, 0.4, 0]} rotation={[0, 0, -0.38]} castShadow>
+      {/* torso hunched over the screen (shirt) */}
+      <mesh material={shirt} position={[-0.02, 0.4, 0]} rotation={[0, 0, -0.38]} castShadow>
         <capsuleGeometry args={[0.115, 0.24, 4, 8]} />
       </mesh>
-      {/* head tipped down toward the laptop */}
+      {/* head + hair, tipped down toward the laptop */}
       <mesh material={skin} position={[0.13, 0.59, 0]} rotation={[0, 0, -0.5]} castShadow>
         <sphereGeometry args={[0.092, 16, 16]} />
       </mesh>
-      {/* arms reaching to the keyboard */}
-      <mesh material={skin} position={[0.16, 0.38, 0.13]} rotation={[0, 0, -0.95]} castShadow>
-        <capsuleGeometry args={[0.04, 0.24, 4, 8]} />
+      <mesh material={hair} position={[0.115, 0.63, 0]} rotation={[0, 0, -0.5]} castShadow>
+        <sphereGeometry args={[0.097, 16, 16, 0, Math.PI * 2, 0, Math.PI * 0.62]} />
       </mesh>
-      <mesh material={skin} position={[0.16, 0.38, -0.13]} rotation={[0, 0, -0.95]} castShadow>
-        <capsuleGeometry args={[0.04, 0.24, 4, 8]} />
+      {/* arms reaching to the keyboard (sleeves + skin hands) */}
+      <mesh material={shirt} position={[0.16, 0.38, 0.13]} rotation={[0, 0, -0.95]} castShadow>
+        <capsuleGeometry args={[0.04, 0.2, 4, 8]} />
+      </mesh>
+      <mesh material={shirt} position={[0.16, 0.38, -0.13]} rotation={[0, 0, -0.95]} castShadow>
+        <capsuleGeometry args={[0.04, 0.2, 4, 8]} />
+      </mesh>
+      <mesh material={skin} position={[0.27, 0.28, 0.12]} castShadow>
+        <sphereGeometry args={[0.038, 10, 10]} />
+      </mesh>
+      <mesh material={skin} position={[0.27, 0.28, -0.12]} castShadow>
+        <sphereGeometry args={[0.038, 10, 10]} />
       </mesh>
       {/* laptop: keyboard base + glowing screen */}
       <mesh material={metal} position={[0.3, 0.27, 0]} rotation={[0, 0, -0.05]} castShadow>
