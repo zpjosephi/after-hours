@@ -10,6 +10,7 @@ import {
   Sparkles,
   Environment,
   useTexture,
+  useGLTF,
   PerformanceMonitor,
   Loader,
 } from "@react-three/drei";
@@ -399,6 +400,34 @@ function ShaderWaterfall({
   );
 }
 
+/* ---------------- Real photogrammetry tree (Poly Haven, simplified) ---------------- */
+function RealTree({
+  position,
+  scale = 1,
+  rotation = 0,
+}: {
+  position: [number, number, number];
+  scale?: number;
+  rotation?: number;
+}) {
+  const { scene } = useGLTF("/models/tree.glb");
+  const tree = useMemo(() => {
+    const c = scene.clone(true);
+    c.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      if (mesh.isMesh) {
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        const m = mesh.material as THREE.MeshStandardMaterial;
+        if (m) m.envMapIntensity = 0.6;
+      }
+    });
+    return c;
+  }, [scene]);
+  return <primitive object={tree} position={position} scale={scale} rotation={[0, rotation, 0]} />;
+}
+useGLTF.preload("/models/tree.glb");
+
 /* ---------------- Stylized tree (trunk + low-poly canopy) ---------------- */
 function Tree({
   position = [0, 0, 0],
@@ -509,8 +538,8 @@ function HeroIsland({ material }: { material: THREE.Material }) {
       <group position={[0, 1.2, 0]}>
         <mesh geometry={geo} material={material} castShadow receiveShadow />
         <Grass />
-        {/* tree sits in the flat central clearing (~y 0.5) */}
-        <Tree position={[-0.9, 0.45, 0.2]} scale={1.35} />
+        {/* real tree in the flat central clearing (~y 0.5) */}
+        <RealTree position={[-0.7, 0.42, 0.1]} scale={1.0} />
         <SeatedFigure position={[0.55, 0.5, 0.7]} scale={0.8} />
         <Roots material={barkMat} />
         {/* spring pool near the clearing, feeding the channel */}
