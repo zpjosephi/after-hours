@@ -112,6 +112,9 @@ const ISLE = {
   lipY: -0.62, // height of the carved spout where water leaves the island
 };
 
+// where the figure sits; grass leaves a clearing here
+const CODER_POS: [number, number, number] = [2.35, 0.34, 1.42];
+
 // shared noise so the grass scatters onto the exact terrain the geometry builds
 const ihash3 = (x: number, y: number, z: number) =>
   ((Math.sin(x * 12.9898 + y * 78.233 + z * 37.719) * 43758.5453) % 1 + 1) % 1;
@@ -684,8 +687,8 @@ function HeroIsland({ material }: { material: THREE.Material }) {
         <Grass />
         {/* real tree, off to the back away from the water */}
         <RealTree position={[-0.2, 0.42, -1.7]} scale={1.0} />
-        {/* angler perched at the rim, fishing into the clouds */}
-        <Angler position={[2.5, 0.32, 1.5]} scale={0.85} rotation={-0.5} />
+        {/* a coder working at the rim, lit by the laptop glow */}
+        <Coder position={CODER_POS} scale={0.92} rotation={-2.3} />
         <Roots material={barkMat} />
 
         {/* CASCADE, tier 1: a tall rock outcrop the upper fall pours from */}
@@ -834,6 +837,79 @@ function Angler({
   );
 }
 
+/* ---------------- Coder: a figure working on a laptop, lit by its glow ---------------- */
+function Coder({
+  position,
+  scale = 1,
+  rotation = 0,
+}: {
+  position: [number, number, number];
+  scale?: number;
+  rotation?: number;
+}) {
+  const skin = useMemo(
+    () => new THREE.MeshStandardMaterial({ color: "#262530", roughness: 0.95, metalness: 0 }),
+    []
+  );
+  const metal = useMemo(
+    () => new THREE.MeshStandardMaterial({ color: "#2a2c33", roughness: 0.5, metalness: 0.6 }),
+    []
+  );
+  const screen = useMemo(
+    () =>
+      new THREE.MeshStandardMaterial({
+        color: "#0a0e16",
+        emissive: new THREE.Color("#cfe0ff"),
+        emissiveIntensity: 2.8,
+        roughness: 0.4,
+        toneMapped: true,
+      }),
+    []
+  );
+  return (
+    <group position={position} scale={scale} rotation={[0, rotation, 0]}>
+      {/* hips + cross-legged lap */}
+      <mesh material={skin} position={[0, 0.15, 0]} castShadow>
+        <boxGeometry args={[0.24, 0.16, 0.3]} />
+      </mesh>
+      <mesh material={skin} position={[0.22, 0.1, 0.13]} rotation={[0, 0, -1.45]} castShadow>
+        <capsuleGeometry args={[0.07, 0.28, 4, 8]} />
+      </mesh>
+      <mesh material={skin} position={[0.22, 0.1, -0.13]} rotation={[0, 0, -1.45]} castShadow>
+        <capsuleGeometry args={[0.07, 0.28, 4, 8]} />
+      </mesh>
+      {/* torso hunched over the screen */}
+      <mesh material={skin} position={[-0.02, 0.4, 0]} rotation={[0, 0, -0.38]} castShadow>
+        <capsuleGeometry args={[0.115, 0.24, 4, 8]} />
+      </mesh>
+      {/* head tipped down toward the laptop */}
+      <mesh material={skin} position={[0.13, 0.59, 0]} rotation={[0, 0, -0.5]} castShadow>
+        <sphereGeometry args={[0.092, 16, 16]} />
+      </mesh>
+      {/* arms reaching to the keyboard */}
+      <mesh material={skin} position={[0.16, 0.38, 0.13]} rotation={[0, 0, -0.95]} castShadow>
+        <capsuleGeometry args={[0.04, 0.24, 4, 8]} />
+      </mesh>
+      <mesh material={skin} position={[0.16, 0.38, -0.13]} rotation={[0, 0, -0.95]} castShadow>
+        <capsuleGeometry args={[0.04, 0.24, 4, 8]} />
+      </mesh>
+      {/* laptop: keyboard base + glowing screen */}
+      <mesh material={metal} position={[0.3, 0.27, 0]} rotation={[0, 0, -0.05]} castShadow>
+        <boxGeometry args={[0.26, 0.02, 0.24]} />
+      </mesh>
+      <mesh material={metal} position={[0.42, 0.37, 0]} rotation={[0, 0, 1.15]} castShadow>
+        <boxGeometry args={[0.24, 0.02, 0.24]} />
+      </mesh>
+      {/* the lit screen face toward the coder */}
+      <mesh material={screen} position={[0.405, 0.37, 0]} rotation={[0, 0, 1.15]}>
+        <planeGeometry args={[0.2, 0.2]} />
+      </mesh>
+      {/* the glow it casts back onto the figure */}
+      <pointLight position={[0.34, 0.45, 0]} color="#bcd2f5" intensity={2.6} distance={2.0} decay={2} />
+    </group>
+  );
+}
+
 /* ---------------- Birds: low-poly silhouettes wheeling in the sky ---------------- */
 function Bird({
   radius,
@@ -972,6 +1048,8 @@ function Grass({ count = 16000 }: { count?: number }) {
       const horiz = Math.max(1e-4, Math.hypot(X, Z));
       const dx = X / horiz, dz = Z / horiz;
       if (dx > 0.2 && Math.exp(-(dz * dz) / 0.05) > 0.5 && r > 1.2) continue;
+      // leave a clearing where the figure sits
+      if (Math.hypot(X - CODER_POS[0], Z - CODER_POS[2]) < 0.7) continue;
       dummy.position.set(X, Y - 0.02, Z);
       dummy.rotation.set((Math.random() - 0.5) * 0.2, Math.random() * Math.PI, (Math.random() - 0.5) * 0.2);
       dummy.scale.set(0.8 + Math.random() * 0.5, 0.7 + Math.random() * 0.7, 1);
