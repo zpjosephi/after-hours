@@ -153,11 +153,13 @@ function islandTopHeight(X: number, Z: number): number | null {
   let Y = ny * plateauH + hills;
   const horiz = Math.max(1e-5, Math.hypot(nx, nz));
   const dx = nx / horiz, dz = nz / horiz;
-  // a defined trench (riverbed) toward +X: a flat bottom with steep walls (like a
-  // ditch), so the stream sits recessed and the banks read as a clear channel
+  // a smooth U-shaped trough (a half-pipe) toward +X, so the stream sits in a
+  // rounded concave channel like water in a gutter, not a flat sheet
   const adz = Math.abs(dz);
-  const channel = Math.max(0, dx) * (1 - THREE.MathUtils.smoothstep(adz, 0.05, 0.13));
-  Y -= channel * 0.72 * THREE.MathUtils.smoothstep(rr, 0.12, 1.0);
+  const w = 0.15;
+  const uShape = adz < w ? 1 - (adz / w) * (adz / w) : 0; // parabolic U cross-section
+  const channel = Math.max(0, dx) * uShape;
+  Y -= channel * 0.5 * THREE.MathUtils.smoothstep(rr, 0.12, 1.0);
   return Y;
 }
 
@@ -191,8 +193,10 @@ function useIslandGeometry(detail: number) {
         const horizU = Math.hypot(nx, nz) || 1e-5;
         const dxu = Math.max(0, nx / horizU);
         const adzu = Math.abs(nz / horizU);
-        const notch = dxu * (1 - THREE.MathUtils.smoothstep(adzu, 0.05, 0.13)) * Math.max(0, 1 - t * 2.5);
-        Y -= notch * 0.75;
+        const wU = 0.15;
+        const uU = adzu < wU ? 1 - (adzu / wU) * (adzu / wU) : 0;
+        const notch = dxu * uU * Math.max(0, 1 - t * 2.5);
+        Y -= notch * 0.7;
       }
       pos.setXYZ(i, X, Y, Z);
     }
@@ -603,7 +607,7 @@ function WaterPool({
 /* ---------------- Stream: a ribbon of flowing water hugging the channel ---------------- */
 const STREAM_X0 = -0.65; // starts at the upper fall's landing pool
 const STREAM_X1 = 3.35; // ends at the rim
-const STREAM_HALFW = 0.24; // sits in the flat channel bottom, walls rising on each side
+const STREAM_HALFW = 0.32; // fills the bottom of the U, walls curving up on each side
 function buildStreamGeometry() {
   const N = 48;
   const g = new THREE.PlaneGeometry(1, 1, N, 1);
