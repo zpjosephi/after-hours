@@ -635,9 +635,8 @@ function Stream() {
   const mat = useMemo(() => {
     const m = new THREE.MeshStandardMaterial({
       color: "#ffffff",
-      transparent: true,
-      opacity: 0.92,
-      roughness: 0.1,
+      transparent: false, // opaque so it never mis-sorts against the falls (no teal bands)
+      roughness: 0.12,
       metalness: 0,
       envMapIntensity: 1.0,
       side: THREE.DoubleSide,
@@ -726,24 +725,19 @@ function HeroIsland({ material }: { material: THREE.Material }) {
           castShadow
           receiveShadow
         />
-        {/* spring on top, the upper fall down its face, and the pool it lands in */}
-        <WaterPool position={[-1.6, 3.1, 0]} radius={0.42} />
+        {/* the upper fall pours down the rock face onto the plateau */}
         <ShaderWaterfall position={[-0.66, 1.85, 0]} width={0.92} height={2.6} faceAxis="x" />
-        <WaterPool position={[-0.5, 0.5, 0]} radius={0.55} />
 
-        {/* the stream carries the water across the plateau to the rim */}
+        {/* the (opaque) stream carries the water across the plateau to the rim */}
         <Stream />
 
-        {/* CASCADE, tier 2: pours from the trench mouth down into the cloud sea */}
+        {/* the lower fall pours off the cliff into the cloud sea */}
         <ShaderWaterfall position={[3.4, -3.75, 0]} width={0.5} height={7.5} faceAxis="x" />
-        {/* mist veil over the brink to soften the rocky lip, like real spray */}
-        <Sparkles count={70} scale={[0.7, 0.7, 0.8]} position={[3.35, -0.55, 0]} size={6} speed={reduced ? 0 : 0.7} opacity={0.7} color="#ffffff" />
 
-        {/* misty spray columns running the length of each fall, plus heavier mist at the feet */}
-        <Sparkles count={70} scale={[0.7, 2.6, 0.55]} position={[-0.66, 1.85, 0]} size={4} speed={reduced ? 0 : 0.7} opacity={0.6} color="#ffffff" />
-        <Sparkles count={42} scale={[1.1, 0.8, 1.0]} position={[-0.5, 0.7, 0]} size={6} speed={reduced ? 0 : 0.8} opacity={0.6} color="#ffffff" />
-        <Sparkles count={150} scale={[0.85, 7, 0.55]} position={[3.45, -4.1, 0]} size={5} speed={reduced ? 0 : 0.9} opacity={0.55} color="#ffffff" />
-        <Sparkles count={80} scale={[2.0, 1.8, 1.5]} position={[3.5, -6.7, 0]} size={8} speed={reduced ? 0 : 1.1} opacity={0.5} color="#ffffff" />
+        {/* white spray at the falls (points, never transparent panels) */}
+        <Sparkles count={55} scale={[0.7, 2.6, 0.5]} position={[-0.66, 1.85, 0]} size={4} speed={reduced ? 0 : 0.7} opacity={0.6} color="#ffffff" />
+        <Sparkles count={130} scale={[0.8, 7, 0.5]} position={[3.45, -4.1, 0]} size={5} speed={reduced ? 0 : 0.9} opacity={0.55} color="#ffffff" />
+        <Sparkles count={80} scale={[1.9, 1.8, 1.5]} position={[3.5, -6.7, 0]} size={8} speed={reduced ? 0 : 1.1} opacity={0.5} color="#ffffff" />
       </group>
     </Float>
   );
