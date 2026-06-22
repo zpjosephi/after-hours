@@ -898,6 +898,16 @@ function Person({
       if (m.isMesh) {
         m.castShadow = true;
         m.frustumCulled = false;
+        // hair came over as alphaMode BLEND with its opacity map dropped; cut it
+        // out with an alpha test instead so the strands read instead of vanishing
+        const mat = m.material as THREE.MeshStandardMaterial;
+        if (mat && /hair/i.test(mat.name)) {
+          mat.transparent = false;
+          mat.alphaTest = 0;
+          mat.depthWrite = true;
+          mat.side = THREE.DoubleSide;
+          mat.needsUpdate = true;
+        }
       }
     });
     // GLTFLoader sanitizes ':' to '_', so match the Hips bone by substring
@@ -926,8 +936,8 @@ function Person({
     const hips = bones.current.hips;
     if (!g || !hips) return;
     hips.getWorldPosition(tmpA);
-    tmpA.x += Math.sin(rotation) * 0.5; // forward onto the lap, keyboard under the hands
-    tmpA.z += Math.cos(rotation) * 0.5;
+    tmpA.x += Math.sin(rotation) * 0.53; // forward onto the lap, keyboard under the hands
+    tmpA.z += Math.cos(rotation) * 0.53;
     tmpA.y += 0.03; // rest on top of the thighs, not clipping into them
     if (g.parent) g.parent.worldToLocal(tmpA);
     g.position.copy(tmpA);
