@@ -1176,14 +1176,17 @@ function Bird({
 }
 
 function Birds() {
-  const mat = useMemo(() => new THREE.MeshBasicMaterial({ color: "#2c2b33" }), []);
+  const mat = useMemo(
+    () => new THREE.MeshBasicMaterial({ color: "#2c2b33", side: THREE.DoubleSide }),
+    []
+  );
   const flock = useMemo(
     () =>
-      Array.from({ length: 7 }, (_, i) => ({
-        radius: 7 + (i % 3) * 1.8,
-        height: 4.2 + (i % 4) * 0.7,
-        phase: (i / 7) * Math.PI * 2,
-        speed: 0.1 + (i % 3) * 0.025,
+      Array.from({ length: 12 }, (_, i) => ({
+        radius: 6.5 + (i % 4) * 1.6,
+        height: 3.8 + (i % 5) * 0.7,
+        phase: (i / 12) * Math.PI * 2,
+        speed: 0.09 + (i % 4) * 0.022,
         flap: 5 + (i % 4),
       })),
     []
