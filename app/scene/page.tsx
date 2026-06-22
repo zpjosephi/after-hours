@@ -91,7 +91,6 @@ function useRockMaterial() {
     });
 
     const mat = new THREE.MeshStandardMaterial({
-      vertexColors: true,
       roughness: 1,
       metalness: 0,
       envMapIntensity: 0.55,
@@ -145,7 +144,11 @@ function useRockMaterial() {
            vec3 triP = vWPos * uScale;
            vec3 rockAlb = triSample(tDiff, triP, triW).rgb;
            rockAlb = pow(rockAlb, vec3(2.2)); // sRGB -> linear
-           diffuseColor.rgb *= rockAlb;`
+           // grass clings to up-facing faces; rock everywhere else
+           float upFace = smoothstep(0.30, 0.72, vWNor.y);
+           vec3 grassCol = vec3(0.16, 0.30, 0.08) * (0.7 + 0.6 * rockAlb.g);
+           vec3 albedo = mix(rockAlb, grassCol, upFace);
+           diffuseColor.rgb *= albedo;`
         )
         .replace(
           "#include <roughnessmap_fragment>",
@@ -272,6 +275,104 @@ function ShaderWaterfall({
   );
 }
 
+/* ---------------- Stylized tree (trunk + low-poly canopy) ---------------- */
+function Tree({
+  position = [0, 0, 0],
+  scale = 1,
+}: {
+  position?: [number, number, number];
+  scale?: number;
+}) {
+  const barkMat = useMemo(
+    () => new THREE.MeshStandardMaterial({ color: "#5b4329", roughness: 0.92, metalness: 0 }),
+    []
+  );
+  const leafMat = useMemo(
+    () =>
+      new THREE.MeshStandardMaterial({
+        color: "#6f8f43",
+        roughness: 0.82,
+        metalness: 0,
+        flatShading: true,
+        envMapIntensity: 0.4,
+      }),
+    []
+  );
+  return (
+    <group position={position} scale={scale}>
+      {/* trunk, leaning a touch */}
+      <mesh material={barkMat} position={[0, 0.7, 0]} rotation={[0, 0, 0.07]} castShadow>
+        <cylinderGeometry args={[0.07, 0.17, 1.5, 8]} />
+      </mesh>
+      {/* two branches */}
+      <mesh material={barkMat} position={[0.16, 1.2, 0.02]} rotation={[0, 0, -0.8]} castShadow>
+        <cylinderGeometry args={[0.025, 0.07, 0.75, 6]} />
+      </mesh>
+      <mesh material={barkMat} position={[-0.14, 1.05, -0.05]} rotation={[0.2, 0, 0.7]} castShadow>
+        <cylinderGeometry args={[0.025, 0.06, 0.6, 6]} />
+      </mesh>
+      {/* canopy: overlapping faceted blobs */}
+      <mesh material={leafMat} position={[0, 1.75, 0]} castShadow>
+        <icosahedronGeometry args={[0.66, 1]} />
+      </mesh>
+      <mesh material={leafMat} position={[0.42, 1.5, 0.16]} castShadow>
+        <icosahedronGeometry args={[0.4, 1]} />
+      </mesh>
+      <mesh material={leafMat} position={[-0.38, 1.55, -0.12]} castShadow>
+        <icosahedronGeometry args={[0.43, 1]} />
+      </mesh>
+      <mesh material={leafMat} position={[0.08, 2.12, -0.05]} castShadow>
+        <icosahedronGeometry args={[0.34, 1]} />
+      </mesh>
+    </group>
+  );
+}
+
+/* ---------------- Roots dangling from the island underside ---------------- */
+function Roots({ material }: { material: THREE.Material }) {
+  const roots: { x: number; z: number; len: number; tilt: [number, number, number] }[] = [
+    { x: 0.05, z: 0.0, len: 1.6, tilt: [0.1, 0, 0.05] },
+    { x: 0.32, z: 0.18, len: 1.1, tilt: [0.2, 0, -0.25] },
+    { x: -0.28, z: -0.14, len: 1.25, tilt: [-0.18, 0, 0.3] },
+    { x: 0.12, z: -0.3, len: 0.9, tilt: [0.35, 0, 0.1] },
+    { x: -0.2, z: 0.26, len: 1.0, tilt: [-0.3, 0, -0.15] },
+  ];
+  return (
+    <group position={[0, -1.5, 0]}>
+      {roots.map((r, i) => (
+        <mesh
+          key={i}
+          material={material}
+          position={[r.x, -r.len / 2, r.z]}
+          rotation={r.tilt}
+          castShadow
+        >
+          {/* fat where it meets the rock, tapering to a thin tip */}
+          <cylinderGeometry args={[0.11, 0.015, r.len, 6]} />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
+/* ---------------- Hero island: rock + tree + roots, bobbing as one ---------------- */
+function HeroIsland({ material }: { material: THREE.Material }) {
+  const geo = useRockGeometry(1.1, 4, 0.2);
+  const barkMat = useMemo(
+    () => new THREE.MeshStandardMaterial({ color: "#4a3623", roughness: 1, metalness: 0 }),
+    []
+  );
+  return (
+    <Float speed={0.8} rotationIntensity={0.05} floatIntensity={0.5} floatingRange={[-0.2, 0.2]}>
+      <group position={[0, 0.3, 0]}>
+        <mesh geometry={geo} material={material} scale={[1.7, 2.45, 1.7]} castShadow receiveShadow />
+        <Tree position={[0, 1.95, 0]} scale={1.05} />
+        <Roots material={barkMat} />
+      </group>
+    </Float>
+  );
+}
+
 /* ---------------- Scene ---------------- */
 function Scene() {
   const [sun, setSun] = useState<THREE.Mesh | null>(null);
@@ -304,17 +405,16 @@ function Scene() {
         shadow-radius={5}
       />
 
-      {/* floating islands */}
-      <Island position={[0, 0.5, 0]} scale={1.2} floatSpeed={1.1} material={rockMat} />
-      <Island position={[-4.5, 2.6, -3]} scale={0.85} floatSpeed={0.8} material={rockMat} />
-      <Island position={[4.2, -1.4, -2]} scale={0.95} floatSpeed={1.3} material={rockMat} />
-      <Island position={[-2, -2.6, 1.5]} scale={0.7} floatSpeed={1.5} material={rockMat} />
-      <Island position={[2.5, 4.2, -6]} scale={0.6} floatSpeed={0.7} material={rockMat} />
-      <Island position={[-6.5, -0.5, -7]} scale={0.5} floatSpeed={0.9} material={rockMat} />
+      {/* the hero: one detailed island carrying the tree + roots */}
+      <HeroIsland material={rockMat} />
 
-      {/* shader waterfalls into the cloud sea */}
-      <ShaderWaterfall position={[0.2, -3.3, 0.4]} width={1.3} height={6} />
-      <ShaderWaterfall position={[4.2, -4.6, -1.8]} width={1.0} height={4.6} />
+      {/* distant supporting islands — small, set back so they read as hazy silhouettes */}
+      <Island position={[-6, 4.3, -8]} scale={0.45} floatSpeed={0.7} material={rockMat} />
+      <Island position={[6.6, 3.6, -9]} scale={0.4} floatSpeed={0.95} material={rockMat} />
+      <Island position={[5.6, -3, -7]} scale={0.5} floatSpeed={1.2} material={rockMat} />
+
+      {/* the waterfall pouring off the hero island into the cloud sea */}
+      <ShaderWaterfall position={[0.2, -2.4, 0.35]} width={1.4} height={6.5} />
 
       {/* drifting dust motes */}
       <Sparkles count={140} scale={[24, 13, 24]} size={3} speed={0.3} opacity={0.5} color="#ffe9c8" />
