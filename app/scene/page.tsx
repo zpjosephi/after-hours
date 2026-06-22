@@ -192,8 +192,8 @@ function useIslandGeometry(detail: number) {
         // poke above the stream at the brink
         const aZu = Math.abs(Z);
         const uU = X > 0 && aZu < 0.36 ? 1 - (aZu / 0.36) * (aZu / 0.36) : 0;
-        const notch = uU * Math.max(0, 1 - t * 2.5);
-        Y -= notch * 0.5;
+        const notch = uU * Math.max(0, 1 - t * 2.0);
+        Y -= notch * 1.05;
       }
       pos.setXYZ(i, X, Y, Z);
     }
@@ -728,7 +728,7 @@ function HeroIsland({ material }: { material: THREE.Material }) {
         <Stream />
 
         {/* the lower fall pours off the cliff into the cloud sea */}
-        <ShaderWaterfall position={[3.4, -3.72, 0]} width={0.62} height={7.2} faceAxis="x" />
+        <ShaderWaterfall position={[3.4, -3.6, 0]} width={0.66} height={7.3} faceAxis="x" />
 
         {/* white spray at the falls (points, never transparent panels) */}
         <Sparkles count={55} scale={[0.7, 2.6, 0.5]} position={[-0.66, 1.85, 0]} size={4} speed={reduced ? 0 : 0.7} opacity={0.6} color="#ffffff" />
