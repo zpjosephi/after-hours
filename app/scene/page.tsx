@@ -605,7 +605,7 @@ function WaterPool({
 
 /* ---------------- Stream: a ribbon of flowing water hugging the channel ---------------- */
 const STREAM_X0 = -0.65; // starts at the upper fall's landing pool
-const STREAM_X1 = 3.05; // a longer visible river, still short of the rim drop
+const STREAM_X1 = 3.38; // reaches the rim so it meets the fall
 const STREAM_HALFW = 0.42; // wide, clearly visible river
 function buildStreamGeometry() {
   const N = 48;
@@ -730,7 +730,7 @@ function HeroIsland({ material }: { material: THREE.Material }) {
         <Stream />
 
         {/* the lower fall pours off the cliff into the cloud sea */}
-        <ShaderWaterfall position={[3.4, -4.05, 0]} width={0.5} height={7.2} faceAxis="x" />
+        <ShaderWaterfall position={[3.4, -3.72, 0]} width={0.62} height={7.2} faceAxis="x" />
 
         {/* white spray at the falls (points, never transparent panels) */}
         <Sparkles count={55} scale={[0.7, 2.6, 0.5]} position={[-0.66, 1.85, 0]} size={4} speed={reduced ? 0 : 0.7} opacity={0.6} color="#ffffff" />
