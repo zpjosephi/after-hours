@@ -151,14 +151,15 @@ function islandTopHeight(X: number, Z: number): number | null {
   const rim = THREE.MathUtils.smoothstep(rr, 0.8, 1.0);
   const hills = ifbm2(X * 0.38 + 10, Z * 0.38 + 10) * hillAmp * (1 - rim) * THREE.MathUtils.smoothstep(rr, 0.08, 0.42);
   let Y = ny * plateauH + hills;
-  const horiz = Math.max(1e-5, Math.hypot(nx, nz));
-  const dx = nx / horiz, dz = nz / horiz;
-  // riverbed toward +X: a gentle smooth hollow the water sits in (no raised banks)
-  const adz = Math.abs(dz);
-  const along = Math.max(0, dx) * THREE.MathUtils.smoothstep(rr, 0.12, 1.0);
-  const w = 0.13;
-  const hollow = adz < w ? 1 - (adz / w) * (adz / w) : 0;
-  Y -= hollow * 0.1 * along;
+  // river channel toward +X with raised grassy banks. Use WORLD Z (constant width)
+  // so the hollow and banks line up with the constant-width stream along its length.
+  if (X > -0.4) {
+    const aZ = Math.abs(Z);
+    const ramp = THREE.MathUtils.smoothstep(X, -0.4, 0.7);
+    const hollow = aZ < 0.36 ? 1 - (aZ / 0.36) * (aZ / 0.36) : 0; // dip under the water
+    const bank = Math.exp(-((aZ - 0.52) * (aZ - 0.52)) / 0.016); // raised berm just outside it
+    Y += (-hollow * 0.12 + bank * 0.34) * ramp;
+  }
   return Y;
 }
 
@@ -187,15 +188,12 @@ function useIslandGeometry(detail: number) {
         X = nx * topR * conv + nx * crag * t;
         Z = nz * topR * conv + nz * crag * t;
         Y = -t * depth - crag * 0.6 * t;
-        // carve the same notch into the cliff lip so it doesn't poke up above the
-        // stream and show a brown ledge at the brink (fades a short way down)
-        const horizU = Math.hypot(nx, nz) || 1e-5;
-        const dxu = Math.max(0, nx / horizU);
-        const adzu = Math.abs(nz / horizU);
-        const wU = 0.13;
-        const uU = adzu < wU ? 1 - (adzu / wU) * (adzu / wU) : 0;
-        const notch = dxu * uU * Math.max(0, 1 - t * 2.5);
-        Y -= notch * 0.7;
+        // carve the matching notch into the cliff lip (world Z) so the rock doesn't
+        // poke above the stream at the brink
+        const aZu = Math.abs(Z);
+        const uU = X > 0 && aZu < 0.36 ? 1 - (aZu / 0.36) * (aZu / 0.36) : 0;
+        const notch = uU * Math.max(0, 1 - t * 2.5);
+        Y -= notch * 0.5;
       }
       pos.setXYZ(i, X, Y, Z);
     }
@@ -606,7 +604,7 @@ function WaterPool({
 /* ---------------- Stream: a ribbon of flowing water hugging the channel ---------------- */
 const STREAM_X0 = -0.65; // starts at the upper fall's landing pool
 const STREAM_X1 = 3.38; // reaches the rim so it meets the fall
-const STREAM_HALFW = 0.42; // wide, clearly visible river
+const STREAM_HALFW = 0.32; // sits in the hollow, banks rising just outside
 function buildStreamGeometry() {
   const N = 48;
   const g = new THREE.PlaneGeometry(1, 1, N, 1);
@@ -1239,7 +1237,7 @@ function Grass({ count = 16000 }: { count?: number }) {
       const Y = islandTopHeight(X, Z);
       if (Y === null) continue;
       // keep the channel (water + its walls) clear of grass; grass tops the banks
-      if (Math.abs(Z) < 0.5 && X > -0.95) continue;
+      if (Math.abs(Z) < 0.4 && X > -0.95) continue;
       // leave a clearing where the figure sits
       if (Math.hypot(X - CODER_POS[0], Z - CODER_POS[2]) < 0.7) continue;
       dummy.position.set(X, Y - 0.02, Z);
