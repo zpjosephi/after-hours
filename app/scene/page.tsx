@@ -725,15 +725,11 @@ function HeroIsland({ material }: { material: THREE.Material }) {
           castShadow
           receiveShadow
         />
-        {/* spring pool on the rock summit: the visible source the upper fall flows from */}
-        <mesh material={springMat} position={[-1.05, 3.55, 0]} rotation={[-Math.PI / 2 + 0.32, 0, 0]}>
-          <circleGeometry args={[0.46, 28]} />
-        </mesh>
-        {/* the upper fall pours from the spring down the rock face onto the plateau */}
+        {/* the upper fall pours down the rock face onto the plateau */}
         <ShaderWaterfall position={[-0.66, 2.0, 0]} width={0.92} height={3.0} faceAxis="x" />
-        {/* foam where the spring spills into the fall, so the source doesn't look spawned */}
+        {/* foam where the water springs out of the rock (no floating disc) */}
         <Clouds material={THREE.MeshBasicMaterial} limit={30}>
-          <Cloud seed={21} bounds={[0.55, 0.45, 0.95]} volume={1.2} segments={18} color="#ffffff" opacity={0.85} fade={1.0} speed={0} growth={0} position={[-0.66, 3.35, 0]} />
+          <Cloud seed={21} bounds={[0.62, 0.55, 1.0]} volume={1.5} segments={18} color="#ffffff" opacity={0.92} fade={1.0} speed={0} growth={0} position={[-0.66, 3.4, 0]} />
         </Clouds>
 
         {/* the (opaque) stream carries the water across the plateau to the rim */}
