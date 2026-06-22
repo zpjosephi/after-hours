@@ -22,6 +22,8 @@ import {
   GodRays,
   ChromaticAberration,
   Noise,
+  HueSaturation,
+  BrightnessContrast,
 } from "@react-three/postprocessing";
 import { BlendFunction } from "postprocessing";
 import {
@@ -825,6 +827,9 @@ function Scene({ reduced }: { reduced: boolean }) {
           <GodRays sun={sun} samples={60} density={0.95} decay={0.93} weight={0.5} exposure={0.4} clampMax={1} blur />
           <Bloom intensity={0.8} luminanceThreshold={0.75} luminanceSmoothing={0.25} mipmapBlur />
           <DepthOfField target={[0, 0.5, 0]} focalLength={0.02} bokehScale={2.5} height={420} />
+          {/* pull the cartoonish saturation down and add filmic contrast */}
+          <HueSaturation saturation={-0.16} />
+          <BrightnessContrast brightness={-0.01} contrast={0.09} />
           <ChromaticAberration blendFunction={BlendFunction.NORMAL} offset={[0.0008, 0.0008]} />
           <Noise premultiply blendFunction={BlendFunction.OVERLAY} opacity={0.22} />
           <Vignette eskil={false} offset={0.3} darkness={0.85} />
