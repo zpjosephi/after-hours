@@ -476,6 +476,18 @@ function HeroIsland({ material }: { material: THREE.Material }) {
     () => new THREE.MeshStandardMaterial({ color: "#4a3623", roughness: 1, metalness: 0 }),
     []
   );
+  const waterMat = useMemo(
+    () =>
+      new THREE.MeshStandardMaterial({
+        color: "#3c7e96",
+        transparent: true,
+        opacity: 0.8,
+        roughness: 0.05,
+        metalness: 0,
+        envMapIntensity: 1.1,
+      }),
+    []
+  );
   const reduced = useContext(ReducedMotion);
   return (
     <Float
@@ -490,6 +502,14 @@ function HeroIsland({ material }: { material: THREE.Material }) {
         <Tree position={[-0.9, 0.45, 0.2]} scale={1.35} />
         <SeatedFigure position={[0.55, 0.5, 0.7]} scale={0.8} />
         <Roots material={barkMat} />
+        {/* spring pool near the clearing, feeding the channel */}
+        <mesh material={waterMat} position={[0.15, 0.47, -0.1]} rotation={[-Math.PI / 2, 0, 0]}>
+          <circleGeometry args={[0.5, 24]} />
+        </mesh>
+        {/* basin at the rim that overflows into the fall */}
+        <mesh material={waterMat} position={[2.35, -0.2, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+          <circleGeometry args={[0.62, 28]} />
+        </mesh>
         {/* waterfall leaves the carved notch in the rim and drops down the cliff */}
         <ShaderWaterfall position={[3.45, -4.1, 0]} width={1.1} height={7} faceAxis="x" />
       </group>
@@ -653,6 +673,8 @@ function Scene({ reduced }: { reduced: boolean }) {
         <Cloud seed={7} bounds={[24, 2, 14]} volume={8} segments={48} color="#e7d3b6" opacity={0.7} fade={32} speed={reduced ? 0 : 0.1} position={[2, -8, -6]} />
         <Cloud seed={3} bounds={[4, 1.5, 4]} volume={4} segments={24} color="#ffffff" opacity={0.95} fade={10} speed={reduced ? 0 : 0.25} position={[0.4, -6.6, 0.2]} />
         <Cloud seed={9} bounds={[3, 1.2, 3]} volume={3} segments={20} color="#ffffff" opacity={0.9} fade={10} speed={reduced ? 0 : 0.3} position={[4.2, -7, -1.8]} />
+        {/* mist where the waterfall hits the cloud sea */}
+        <Cloud seed={5} bounds={[2.4, 1.4, 2.4]} volume={3} segments={18} color="#ffffff" opacity={0.95} fade={7} speed={reduced ? 0 : 0.35} position={[3.45, -5.6, 0]} />
       </Clouds>
 
       <OrbitControls
