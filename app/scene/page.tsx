@@ -191,7 +191,7 @@ function useIslandGeometry(detail: number) {
    World-space triplanar sampling: project the texture down all three axes and
    blend by the surface normal, so a procedural blob gets real rock detail with
    zero stretching. Vertex colors stay as a tint so the grassy top survives.   */
-function useRockMaterial() {
+function useRockMaterial(grassy = true) {
   const maps = useTexture({
     map: "/tex/rock/rock_06_diff_1k.jpg",
     normalMap: "/tex/rock/rock_06_nor_gl_1k.jpg",
@@ -260,10 +260,20 @@ function useRockMaterial() {
            vec3 triP = vWPos * uScale;
            vec3 rockAlb = triSample(tDiff, triP, triW).rgb;
            rockAlb = pow(rockAlb, vec3(2.2)); // sRGB -> linear
-           // grass clings to up-facing faces; rock everywhere else
-           float upFace = smoothstep(0.30, 0.72, vWNor.y);
-           vec3 grassCol = vec3(0.16, 0.30, 0.08) * (0.7 + 0.6 * rockAlb.g);
-           vec3 albedo = mix(rockAlb, grassCol, upFace);
+           // break the rock up with damp/dry tonal variation so it reads less uniform
+           float macro = triSample(tDiff, triP * 0.18, triW).r;
+           rockAlb *= 0.78 + 0.5 * macro;
+           // moss creeps into upward crevices (where AO is low but the face tilts up)
+           float upTilt = smoothstep(0.05, 0.6, vWNor.y);
+           float mossN = triSample(tDiff, triP * 0.6, triW).g;
+           vec3 mossCol = vec3(0.10, 0.20, 0.06);
+           vec3 albedo = mix(rockAlb, mossCol, upTilt * smoothstep(0.45, 0.75, mossN) * 0.6);
+           ${grassy
+             ? `// grass cap clings to the near-flat top
+                float upFace = smoothstep(0.42, 0.78, vWNor.y);
+                vec3 grassCol = vec3(0.16, 0.30, 0.08) * (0.7 + 0.6 * rockAlb.g);
+                albedo = mix(albedo, grassCol, upFace);`
+             : ``}
            diffuseColor.rgb *= albedo;`
         )
         .replace(
@@ -282,9 +292,9 @@ function useRockMaterial() {
           `{ vec3 wA = triWeights(vWNor); float ao = triSample(tAO, vWPos * uScale, wA).r; reflectedLight.indirectDiffuse *= ao; }`
         );
     };
-    mat.customProgramCacheKey = () => "triplanar-rock-v1";
+    mat.customProgramCacheKey = () => (grassy ? "triplanar-rock-grass-v2" : "triplanar-rock-bare-v2");
     return mat;
-  }, [maps]);
+  }, [maps, grassy]);
 }
 
 function Island({
@@ -564,10 +574,93 @@ function WaterPool({
   );
 }
 
+/* ---------------- Stream: a ribbon of flowing water hugging the channel ---------------- */
+const STREAM_X0 = -0.25;
+const STREAM_X1 = 3.32;
+function buildStreamGeometry() {
+  const N = 48;
+  const g = new THREE.PlaneGeometry(1, 1, N, 1);
+  const pos = g.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    const u = pos.getX(i) + 0.5; // 0..1 along the flow
+    const v = pos.getY(i) + 0.5; // 0..1 across
+    const x = STREAM_X0 + (STREAM_X1 - STREAM_X0) * u;
+    const halfW = 0.28 - 0.08 * u; // a touch wider at the source
+    const z = (v - 0.5) * 2 * halfW;
+    const h = islandTopHeight(x, z);
+    const Y = (h === null ? ISLE.lipY : h) + 0.05;
+    pos.setXYZ(i, x, Y, z);
+  }
+  pos.needsUpdate = true;
+  g.computeVertexNormals();
+  return g;
+}
+
+function Stream() {
+  const reduced = useContext(ReducedMotion);
+  const uniforms = useMemo(() => ({ uTime: { value: 0 } }), []);
+  const geo = useMemo(() => buildStreamGeometry(), []);
+  const mat = useMemo(() => {
+    const m = new THREE.MeshStandardMaterial({
+      color: "#ffffff",
+      transparent: true,
+      opacity: 0.92,
+      roughness: 0.1,
+      metalness: 0,
+      envMapIntensity: 1.0,
+      side: THREE.DoubleSide,
+    });
+    m.onBeforeCompile = (sh) => {
+      sh.uniforms.uTime = uniforms.uTime;
+      sh.vertexShader = sh.vertexShader
+        .replace("#include <common>", "#include <common>\nvarying float vSX;\nvarying float vSZ;")
+        .replace("#include <begin_vertex>", "#include <begin_vertex>\nvSX = position.x;\nvSZ = position.z;");
+      sh.fragmentShader = sh.fragmentShader
+        .replace(
+          "#include <common>",
+          `#include <common>
+           uniform float uTime;
+           varying float vSX;
+           varying float vSZ;
+           float sh21(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+           float svn(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.0-2.0*f);
+             float a=sh21(i), b=sh21(i+vec2(1,0)), c=sh21(i+vec2(0,1)), d=sh21(i+vec2(1,1));
+             return mix(mix(a,b,f.x), mix(c,d,f.x), f.y); }`
+        )
+        .replace(
+          "#include <normal_fragment_maps>",
+          `float u = clamp((vSX - ${STREAM_X0.toFixed(2)}) / (${(STREAM_X1 - STREAM_X0).toFixed(2)}), 0.0, 1.0);
+           float t = uTime;
+           float e = 0.03;
+           float fl  = svn(vec2(u * 14.0 - t * 1.8, vSZ * 18.0));
+           float flx = svn(vec2((u + e) * 14.0 - t * 1.8, vSZ * 18.0));
+           normal = normalize(normal + vec3((fl - flx) / e * 0.12, 0.0, 0.0));`
+        )
+        .replace(
+          "#include <map_fragment>",
+          `float uu = clamp((vSX - ${STREAM_X0.toFixed(2)}) / (${(STREAM_X1 - STREAM_X0).toFixed(2)}), 0.0, 1.0);
+           float foam = svn(vec2(uu * 26.0 - uTime * 2.6, vSZ * 22.0));
+           vec3 water = vec3(0.22, 0.45, 0.5);
+           // foam streaks + brighter as it nears the lip
+           water = mix(water, vec3(1.0), smoothstep(0.62, 0.96, foam) * 0.55 + smoothstep(0.72, 1.0, uu) * 0.35);
+           diffuseColor.rgb *= water;`
+        );
+    };
+    m.customProgramCacheKey = () => "stream-flow-v1";
+    return m;
+  }, [uniforms]);
+  useFrame((s) => {
+    if (!reduced) uniforms.uTime.value = s.clock.elapsedTime;
+  });
+  return <mesh geometry={geo} material={mat} renderOrder={1} />;
+}
+
 /* ---------------- Hero island: rock + tree + roots, bobbing as one ---------------- */
 function HeroIsland({ material }: { material: THREE.Material }) {
   // wide terrain island, smooth and expansive
   const geo = useIslandGeometry(6);
+  const boulderGeo = useRockGeometry(1.1, 5, 0.42);
+  const boulderMat = useRockMaterial(false); // bare rock, no grass cap
   const barkMat = useMemo(
     () => new THREE.MeshStandardMaterial({ color: "#4a3623", roughness: 1, metalness: 0 }),
     []
@@ -583,15 +676,29 @@ function HeroIsland({ material }: { material: THREE.Material }) {
       <group position={[0, 1.2, 0]}>
         <mesh geometry={geo} material={material} castShadow receiveShadow />
         <Grass />
-        {/* real tree in the flat central clearing (~y 0.5) */}
-        <RealTree position={[-0.7, 0.42, 0.1]} scale={1.0} />
-        <SeatedFigure position={[0.55, 0.5, 0.7]} scale={0.8} />
+        {/* real tree, off to the back away from the water */}
+        <RealTree position={[-0.2, 0.42, -1.7]} scale={1.0} />
+        <SeatedFigure position={[2.45, 0.3, 1.15]} scale={0.8} />
         <Roots material={barkMat} />
-        {/* spring pool near the clearing, feeding the channel */}
-        <WaterPool position={[0.15, 0.47, -0.1]} radius={0.5} />
-        {/* basin at the rim that overflows into the fall */}
-        <WaterPool position={[2.35, -0.2, 0]} radius={0.62} />
-        {/* waterfall leaves the carved notch in the rim and drops down the cliff */}
+
+        {/* CASCADE, tier 1: a tall rock outcrop the upper fall pours from */}
+        <mesh
+          geometry={boulderGeo}
+          material={boulderMat}
+          position={[-1.75, 1.5, 0]}
+          scale={[1.0, 2.15, 0.85]}
+          castShadow
+          receiveShadow
+        />
+        {/* spring on top, the upper fall down its face, and the pool it lands in */}
+        <WaterPool position={[-1.6, 3.1, 0]} radius={0.4} />
+        <ShaderWaterfall position={[-0.66, 1.85, 0]} width={0.85} height={2.6} faceAxis="x" />
+        <WaterPool position={[-0.5, 0.5, 0]} radius={0.48} />
+
+        {/* the stream carries the water across the plateau to the rim */}
+        <Stream />
+
+        {/* CASCADE, tier 2: over the cliff and down into the cloud sea */}
         <ShaderWaterfall position={[3.45, -4.1, 0]} width={1.1} height={7} faceAxis="x" />
       </group>
     </Float>
