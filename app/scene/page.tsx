@@ -153,13 +153,14 @@ function islandTopHeight(X: number, Z: number): number | null {
   let Y = ny * plateauH + hills;
   const horiz = Math.max(1e-5, Math.hypot(nx, nz));
   const dx = nx / horiz, dz = nz / horiz;
-  // a smooth U-shaped trough (a half-pipe) toward +X, so the stream sits in a
-  // rounded concave channel like water in a gutter, not a flat sheet
+  // riverbed toward +X: a gentle hollow under the water PLUS raised earth banks
+  // on either side, so the water clearly runs between two embankments
   const adz = Math.abs(dz);
-  const w = 0.15;
-  const uShape = adz < w ? 1 - (adz / w) * (adz / w) : 0; // parabolic U cross-section
-  const channel = Math.max(0, dx) * uShape;
-  Y -= channel * 0.5 * THREE.MathUtils.smoothstep(rr, 0.12, 1.0);
+  const along = Math.max(0, dx) * THREE.MathUtils.smoothstep(rr, 0.12, 1.0);
+  const w = 0.13;
+  const hollow = adz < w ? 1 - (adz / w) * (adz / w) : 0; // dip under the water
+  const bank = Math.exp(-((adz - 0.2) * (adz - 0.2)) / 0.0025); // raised berm just outside it
+  Y += (-hollow * 0.28 + bank * 0.42) * along;
   return Y;
 }
 
@@ -193,7 +194,7 @@ function useIslandGeometry(detail: number) {
         const horizU = Math.hypot(nx, nz) || 1e-5;
         const dxu = Math.max(0, nx / horizU);
         const adzu = Math.abs(nz / horizU);
-        const wU = 0.15;
+        const wU = 0.13;
         const uU = adzu < wU ? 1 - (adzu / wU) * (adzu / wU) : 0;
         const notch = dxu * uU * Math.max(0, 1 - t * 2.5);
         Y -= notch * 0.7;
@@ -607,7 +608,7 @@ function WaterPool({
 /* ---------------- Stream: a ribbon of flowing water hugging the channel ---------------- */
 const STREAM_X0 = -0.65; // starts at the upper fall's landing pool
 const STREAM_X1 = 3.35; // ends at the rim
-const STREAM_HALFW = 0.32; // fills the bottom of the U, walls curving up on each side
+const STREAM_HALFW = 0.26; // runs between the raised banks
 function buildStreamGeometry() {
   const N = 48;
   const g = new THREE.PlaneGeometry(1, 1, N, 1);
@@ -1246,7 +1247,7 @@ function Grass({ count = 16000 }: { count?: number }) {
       const Y = islandTopHeight(X, Z);
       if (Y === null) continue;
       // keep the channel (water + its walls) clear of grass; grass tops the banks
-      if (Math.abs(Z) < 0.42 && X > -0.95) continue;
+      if (Math.abs(Z) < 0.34 && X > -0.95) continue;
       // leave a clearing where the figure sits
       if (Math.hypot(X - CODER_POS[0], Z - CODER_POS[2]) < 0.7) continue;
       dummy.position.set(X, Y - 0.02, Z);
