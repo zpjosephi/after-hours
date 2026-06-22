@@ -728,10 +728,12 @@ function HeroIsland({ material }: { material: THREE.Material }) {
         <Stream />
 
         {/* the lower fall pours off the cliff into the cloud sea */}
-        <ShaderWaterfall position={[3.4, -3.6, 0]} width={0.66} height={7.3} faceAxis="x" />
+        <ShaderWaterfall position={[3.4, -3.56, 0]} width={0.66} height={7.3} faceAxis="x" />
 
-        {/* fine water spray at the brink (compact 3D cluster) masks the seam from any angle */}
-        <Sparkles count={90} scale={[0.5, 0.3, 0.5]} position={[3.36, 0.02, 0]} size={5} speed={reduced ? 0 : 0.6} opacity={0.8} color="#ffffff" />
+        {/* small STATIC foam puff at the brink: covers the seam from all angles, no pulsing */}
+        <Clouds material={THREE.MeshBasicMaterial} limit={30}>
+          <Cloud seed={11} bounds={[0.55, 0.3, 0.46]} volume={0.6} segments={16} color="#ffffff" opacity={0.78} fade={1.1} speed={0} growth={0} position={[3.36, -0.02, 0]} />
+        </Clouds>
 
         {/* white spray at the falls (points, never transparent panels) */}
         <Sparkles count={55} scale={[0.7, 2.6, 0.5]} position={[-0.66, 1.85, 0]} size={4} speed={reduced ? 0 : 0.7} opacity={0.6} color="#ffffff" />
@@ -1323,7 +1325,7 @@ function Scene({ reduced }: { reduced: boolean }) {
       </Clouds>
 
       <OrbitControls
-        autoRotate={!reduced}
+        autoRotate={false}
         autoRotateSpeed={0.3}
         enablePan={false}
         enableZoom
@@ -1331,7 +1333,7 @@ function Scene({ reduced }: { reduced: boolean }) {
         maxPolarAngle={Math.PI / 1.95}
         minDistance={10}
         maxDistance={30}
-        target={[0, -0.6, 0]}
+        target={[3.25, 0.15, 0.1]}
       />
 
       {sun && (
@@ -1361,7 +1363,7 @@ export default function ScenePage() {
       <Canvas
         shadows="percentage"
         dpr={dpr}
-        camera={{ position: [10, 3.5, 15], fov: 42 }}
+        camera={{ position: [6.5, 1.2, 2.6], fov: 42 }}
         gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 0.62 }}
       >
         <PerformanceMonitor
