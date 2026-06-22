@@ -96,6 +96,84 @@ function useRockGeometry(radius: number, detail: number, amp: number) {
   }, [radius, detail, amp]);
 }
 
+/* ---------------- Expansive island terrain ----------------
+   A broad grassy plateau with cliff sides tapering to a rocky point underneath.
+   A shallow river channel is carved across the top toward +X, ending in a notch
+   in the rim — that notch is where the waterfall pours over the cliff.        */
+const ISLE = {
+  topR: 3.4, // plateau radius — wide, so it reads as land, not a pebble
+  plateauH: 0.5, // gentle top relief
+  depth: 5.4, // how far the underside points down
+  hillAmp: 0.85,
+  lipY: -0.62, // height of the carved spout where water leaves the island
+};
+
+function useIslandGeometry(detail: number) {
+  return useMemo(() => {
+    const geo = new THREE.IcosahedronGeometry(1, detail);
+    const pos = geo.attributes.position;
+    const p = new THREE.Vector3();
+
+    const hash3 = (x: number, y: number, z: number) =>
+      ((Math.sin(x * 12.9898 + y * 78.233 + z * 37.719) * 43758.5453) % 1 + 1) % 1;
+    const fbm3 = (x: number, y: number, z: number) => {
+      let v = 0, a = 0.5, f = 1;
+      for (let o = 0; o < 4; o++) {
+        v += a * (hash3(Math.floor(x * f), Math.floor(y * f), Math.floor(z * f)) - 0.5);
+        f *= 2; a *= 0.5;
+      }
+      return v;
+    };
+    const hash2 = (x: number, z: number) =>
+      ((Math.sin(x * 127.1 + z * 311.7) * 43758.5453) % 1 + 1) % 1;
+    const noise2 = (x: number, z: number) => {
+      const xi = Math.floor(x), zi = Math.floor(z), xf = x - xi, zf = z - zi;
+      const u = xf * xf * (3 - 2 * xf), w = zf * zf * (3 - 2 * zf);
+      const a = hash2(xi, zi), b = hash2(xi + 1, zi), c = hash2(xi, zi + 1), d = hash2(xi + 1, zi + 1);
+      return a * (1 - u) * (1 - w) + b * u * (1 - w) + c * (1 - u) * w + d * u * w;
+    };
+    const fbm2 = (x: number, z: number) => {
+      let v = 0, a = 0.5;
+      for (let o = 0; o < 4; o++) { v += a * noise2(x, z); x *= 2; z *= 2; a *= 0.5; }
+      return v;
+    };
+
+    const { topR, plateauH, depth, hillAmp } = ISLE;
+    for (let i = 0; i < pos.count; i++) {
+      p.fromBufferAttribute(pos, i);
+      const nx = p.x, ny = p.y, nz = p.z; // point on the unit sphere
+      const horiz = Math.hypot(nx, nz) || 1e-5;
+      let X: number, Y: number, Z: number;
+
+      if (ny >= 0) {
+        // TOP: flatten the upper hemisphere into a wide plateau with rolling hills
+        X = nx * topR;
+        Z = nz * topR;
+        const rr = horiz; // 0 at centre, 1 at the rim
+        const rim = THREE.MathUtils.smoothstep(rr, 0.8, 1.0);
+        // hills fade out near the centre so there's a flat clearing for the tree
+        const hills = fbm2(X * 0.38 + 10, Z * 0.38 + 10) * hillAmp * (1 - rim) * THREE.MathUtils.smoothstep(rr, 0.08, 0.42);
+        Y = ny * plateauH + hills;
+        // carve a river channel running toward +X, cutting a notch at the rim
+        const dx = nx / horiz, dz = nz / horiz;
+        const channel = Math.max(0, dx) * Math.exp(-(dz * dz) / 0.05);
+        Y -= channel * 0.62 * THREE.MathUtils.smoothstep(rr, 0.1, 1.0);
+      } else {
+        // UNDERSIDE: converge the lower hemisphere to a craggy point
+        const t = -ny; // 0 at rim, 1 at the bottom point
+        const conv = Math.pow(1 - t, 0.6);
+        const crag = fbm3(nx * 2.0, ny * 2.0, nz * 2.0);
+        X = nx * topR * conv + nx * crag * t;
+        Z = nz * topR * conv + nz * crag * t;
+        Y = -t * depth - crag * 0.6 * t;
+      }
+      pos.setXYZ(i, X, Y, Z);
+    }
+    geo.computeVertexNormals();
+    return geo;
+  }, [detail]);
+}
+
 /* ---------------- Triplanar PBR rock material (no UVs needed) ----------------
    World-space triplanar sampling: project the texture down all three axes and
    blend by the surface normal, so a procedural blob gets real rock detail with
@@ -277,19 +355,23 @@ function ShaderWaterfall({
   position,
   width = 1.2,
   height = 6,
+  faceAxis,
 }: {
   position: [number, number, number];
   width?: number;
   height?: number;
+  faceAxis?: "x" | "z";
 }) {
   const reduced = useContext(ReducedMotion);
   const uniforms = useMemo(() => ({ uTime: { value: 0 } }), []);
   useFrame((state) => {
     if (!reduced) uniforms.uTime.value = state.clock.elapsedTime;
   });
+  // a shallow V facing outward off the cliff, or a perpendicular cross for free-standing falls
+  const angles = faceAxis === "x" ? [Math.PI / 2 - 0.3, Math.PI / 2 + 0.3] : [0, Math.PI / 2];
   return (
     <group position={position}>
-      {[0, Math.PI / 2].map((ry, i) => (
+      {angles.map((ry, i) => (
         <mesh key={i} rotation={[0, ry, 0]}>
           <planeGeometry args={[width, height, 1, 1]} />
           <shaderMaterial
@@ -331,29 +413,29 @@ function Tree({
   );
   return (
     <group position={position} scale={scale}>
-      {/* trunk, leaning a touch */}
-      <mesh material={barkMat} position={[0, 0.7, 0]} rotation={[0, 0, 0.07]} castShadow>
-        <cylinderGeometry args={[0.07, 0.17, 1.5, 12]} />
+      {/* trunk, short and sturdy, leaning a touch */}
+      <mesh material={barkMat} position={[0, 0.52, 0]} rotation={[0, 0, 0.06]} castShadow>
+        <cylinderGeometry args={[0.1, 0.22, 1.1, 12]} />
       </mesh>
-      {/* two branches */}
-      <mesh material={barkMat} position={[0.16, 1.2, 0.02]} rotation={[0, 0, -0.8]} castShadow>
-        <cylinderGeometry args={[0.025, 0.07, 0.75, 8]} />
+      {/* two branches reaching into the canopy */}
+      <mesh material={barkMat} position={[0.18, 0.95, 0.02]} rotation={[0, 0, -0.8]} castShadow>
+        <cylinderGeometry args={[0.03, 0.08, 0.6, 8]} />
       </mesh>
-      <mesh material={barkMat} position={[-0.14, 1.05, -0.05]} rotation={[0.2, 0, 0.7]} castShadow>
-        <cylinderGeometry args={[0.025, 0.06, 0.6, 8]} />
+      <mesh material={barkMat} position={[-0.15, 0.85, -0.05]} rotation={[0.2, 0, 0.7]} castShadow>
+        <cylinderGeometry args={[0.03, 0.07, 0.5, 8]} />
       </mesh>
-      {/* canopy: overlapping smooth blobs (higher subdivision = no facets) */}
-      <mesh material={leafMat} position={[0, 1.75, 0]} castShadow>
-        <icosahedronGeometry args={[0.66, 3]} />
+      {/* canopy: overlapping smooth blobs, full and low over the trunk */}
+      <mesh material={leafMat} position={[0, 1.32, 0]} castShadow>
+        <icosahedronGeometry args={[0.82, 3]} />
       </mesh>
-      <mesh material={leafMat} position={[0.42, 1.5, 0.16]} castShadow>
-        <icosahedronGeometry args={[0.4, 3]} />
+      <mesh material={leafMat} position={[0.55, 1.05, 0.18]} castShadow>
+        <icosahedronGeometry args={[0.52, 3]} />
       </mesh>
-      <mesh material={leafMat} position={[-0.38, 1.55, -0.12]} castShadow>
-        <icosahedronGeometry args={[0.43, 3]} />
+      <mesh material={leafMat} position={[-0.5, 1.12, -0.14]} castShadow>
+        <icosahedronGeometry args={[0.56, 3]} />
       </mesh>
-      <mesh material={leafMat} position={[0.08, 2.12, -0.05]} castShadow>
-        <icosahedronGeometry args={[0.34, 3]} />
+      <mesh material={leafMat} position={[0.1, 1.78, -0.05]} castShadow>
+        <icosahedronGeometry args={[0.46, 3]} />
       </mesh>
     </group>
   );
@@ -369,7 +451,7 @@ function Roots({ material }: { material: THREE.Material }) {
     { x: -0.2, z: 0.26, len: 1.0, tilt: [-0.3, 0, -0.15] },
   ];
   return (
-    <group position={[0, -1.5, 0]}>
+    <group position={[0, -2.9, 0]} scale={1.7}>
       {roots.map((r, i) => (
         <mesh
           key={i}
@@ -388,8 +470,8 @@ function Roots({ material }: { material: THREE.Material }) {
 
 /* ---------------- Hero island: rock + tree + roots, bobbing as one ---------------- */
 function HeroIsland({ material }: { material: THREE.Material }) {
-  // higher subdivision so the hero reads as a smooth rock, not a faceted gem
-  const geo = useRockGeometry(1.1, 6, 0.2);
+  // wide terrain island, smooth and expansive
+  const geo = useIslandGeometry(6);
   const barkMat = useMemo(
     () => new THREE.MeshStandardMaterial({ color: "#4a3623", roughness: 1, metalness: 0 }),
     []
@@ -397,16 +479,19 @@ function HeroIsland({ material }: { material: THREE.Material }) {
   const reduced = useContext(ReducedMotion);
   return (
     <Float
-      speed={reduced ? 0 : 0.8}
-      rotationIntensity={reduced ? 0 : 0.05}
-      floatIntensity={reduced ? 0 : 0.5}
+      speed={reduced ? 0 : 0.7}
+      rotationIntensity={reduced ? 0 : 0.04}
+      floatIntensity={reduced ? 0 : 0.45}
       floatingRange={[-0.2, 0.2]}
     >
-      <group position={[0, 0.3, 0]}>
-        <mesh geometry={geo} material={material} scale={[1.7, 2.45, 1.7]} castShadow receiveShadow />
-        <Tree position={[0, 1.95, 0]} scale={1.05} />
-        <SeatedFigure position={[0.18, 1.98, 0.66]} scale={0.5} />
+      <group position={[0, 1.2, 0]}>
+        <mesh geometry={geo} material={material} castShadow receiveShadow />
+        {/* tree sits in the flat central clearing (~y 0.5) */}
+        <Tree position={[-0.9, 0.45, 0.2]} scale={1.35} />
+        <SeatedFigure position={[0.55, 0.5, 0.7]} scale={0.8} />
         <Roots material={barkMat} />
+        {/* waterfall leaves the carved notch in the rim and drops down the cliff */}
+        <ShaderWaterfall position={[3.45, -4.1, 0]} width={1.1} height={7} faceAxis="x" />
       </group>
     </Float>
   );
@@ -556,9 +641,6 @@ function Scene({ reduced }: { reduced: boolean }) {
       <Island position={[6.6, 3.6, -9]} scale={0.4} floatSpeed={0.95} material={rockMat} />
       <Island position={[5.6, -3, -7]} scale={0.5} floatSpeed={1.2} material={rockMat} />
 
-      {/* the waterfall pouring off the hero island into the cloud sea */}
-      <ShaderWaterfall position={[0.2, -2.4, 0.35]} width={1.4} height={6.5} />
-
       {/* birds wheeling through the upper sky */}
       <Birds />
 
@@ -575,14 +657,14 @@ function Scene({ reduced }: { reduced: boolean }) {
 
       <OrbitControls
         autoRotate={!reduced}
-        autoRotateSpeed={0.32}
+        autoRotateSpeed={0.3}
         enablePan={false}
         enableZoom
         minPolarAngle={Math.PI / 3}
-        maxPolarAngle={Math.PI / 1.9}
-        minDistance={8}
-        maxDistance={20}
-        target={[0, 0, 0]}
+        maxPolarAngle={Math.PI / 1.95}
+        minDistance={10}
+        maxDistance={30}
+        target={[0, -0.6, 0]}
       />
 
       {sun && (
@@ -609,7 +691,7 @@ export default function ScenePage() {
       <Canvas
         shadows="percentage"
         dpr={dpr}
-        camera={{ position: [7, 2.5, 11], fov: 42 }}
+        camera={{ position: [10, 3.5, 15], fov: 42 }}
         gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 0.62 }}
       >
         <PerformanceMonitor
