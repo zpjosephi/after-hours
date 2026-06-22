@@ -731,7 +731,7 @@ function HeroIsland({ material }: { material: THREE.Material }) {
         <ShaderWaterfall position={[3.4, -3.6, 0]} width={0.66} height={7.3} faceAxis="x" />
 
         {/* fine water spray at the brink (compact 3D cluster) masks the seam from any angle */}
-        <Sparkles count={120} scale={[0.55, 0.45, 0.55]} position={[3.36, -0.06, 0]} size={6} speed={reduced ? 0 : 2} opacity={0.85} color="#ffffff" />
+        <Sparkles count={90} scale={[0.5, 0.3, 0.5]} position={[3.36, 0.02, 0]} size={5} speed={reduced ? 0 : 0.6} opacity={0.8} color="#ffffff" />
 
         {/* white spray at the falls (points, never transparent panels) */}
         <Sparkles count={55} scale={[0.7, 2.6, 0.5]} position={[-0.66, 1.85, 0]} size={4} speed={reduced ? 0 : 0.7} opacity={0.6} color="#ffffff" />
