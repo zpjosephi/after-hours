@@ -154,7 +154,7 @@ function islandTopHeight(X: number, Z: number): number | null {
   const horiz = Math.max(1e-5, Math.hypot(nx, nz));
   const dx = nx / horiz, dz = nz / horiz;
   const channel = Math.max(0, dx) * Math.exp(-(dz * dz) / 0.05);
-  Y -= channel * 0.62 * THREE.MathUtils.smoothstep(rr, 0.1, 1.0);
+  Y -= channel * 0.3 * THREE.MathUtils.smoothstep(rr, 0.1, 1.0);
   return Y;
 }
 
@@ -183,6 +183,13 @@ function useIslandGeometry(detail: number) {
         X = nx * topR * conv + nx * crag * t;
         Z = nz * topR * conv + nz * crag * t;
         Y = -t * depth - crag * 0.6 * t;
+        // carve the same notch into the cliff lip so it doesn't poke up above the
+        // stream and show a brown ledge at the brink (fades a short way down)
+        const horizU = Math.hypot(nx, nz) || 1e-5;
+        const dxu = Math.max(0, nx / horizU);
+        const dzu = nz / horizU;
+        const notch = dxu * Math.exp(-(dzu * dzu) / 0.05) * Math.max(0, 1 - t * 2.5);
+        Y -= notch * 0.7;
       }
       pos.setXYZ(i, X, Y, Z);
     }
@@ -592,7 +599,7 @@ function WaterPool({
 
 /* ---------------- Stream: a ribbon of flowing water hugging the channel ---------------- */
 const STREAM_X0 = -0.65; // starts at the upper fall's landing pool
-const STREAM_X1 = 3.85; // runs past the rim and curls over the edge
+const STREAM_X1 = 3.35; // ends at the rim
 const STREAM_HALFW = 0.46; // half-width, matched to the waterfalls
 function buildStreamGeometry() {
   const N = 48;
@@ -602,16 +609,10 @@ function buildStreamGeometry() {
     const u = pos.getX(i) + 0.5; // 0..1 along the flow
     const v = pos.getY(i) + 0.5; // 0..1 across
     const x = STREAM_X0 + (STREAM_X1 - STREAM_X0) * u;
-    // gentle meander + width that breathes, so it isn't a dead-straight ribbon
-    const straighten = 1 - THREE.MathUtils.smoothstep(u, 0.82, 1.0); // run straight at the brink
-    const meander = Math.sin(u * Math.PI * 2.3) * 0.14 * straighten;
-    const halfW = (STREAM_HALFW - 0.04 * u) * (0.82 + 0.22 * Math.sin(u * Math.PI * 3.1));
-    const z = (v - 0.5) * 2 * halfW + meander;
+    const halfW = STREAM_HALFW - 0.04 * u;
+    const z = (v - 0.5) * 2 * halfW;
     const h = islandTopHeight(x, z);
-    // on the plateau, hug the terrain; past the rim, curl down over the edge so
-    // the stream pours straight into the fall with no strip of land showing
-    const over = Math.max(0, x - (ISLE.topR - 0.15));
-    const Y = (h === null ? ISLE.lipY : h) + 0.05 - over * over * 3.0;
+    const Y = (h === null ? ISLE.lipY : h) + 0.05;
     pos.setXYZ(i, x, Y, z);
   }
   pos.needsUpdate = true;
@@ -725,9 +726,10 @@ function HeroIsland({ material }: { material: THREE.Material }) {
         {/* the stream carries the water across the plateau to the rim */}
         <Stream />
 
-        {/* CASCADE, tier 2: over the cliff and down into the cloud sea
-            (top lifted to overlap the rim so no strip of land shows at the brink) */}
-        <ShaderWaterfall position={[3.4, -3.85, 0]} width={0.95} height={7.3} faceAxis="x" />
+        {/* CASCADE, tier 2: over the cliff and down into the cloud sea */}
+        <ShaderWaterfall position={[3.42, -3.95, 0]} width={1.05} height={7.4} faceAxis="x" />
+        {/* mist veil over the brink to soften the rocky lip, like real spray */}
+        <Sparkles count={90} scale={[1.4, 0.7, 1.1]} position={[3.35, -0.45, 0]} size={7} speed={reduced ? 0 : 0.7} opacity={0.7} color="#ffffff" />
 
         {/* misty spray columns running the length of each fall, plus heavier mist at the feet */}
         <Sparkles count={70} scale={[0.7, 2.6, 0.55]} position={[-0.66, 1.85, 0]} size={4} speed={reduced ? 0 : 0.7} opacity={0.6} color="#ffffff" />
