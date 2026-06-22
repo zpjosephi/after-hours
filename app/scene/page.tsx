@@ -672,7 +672,7 @@ function Stream() {
            float foam = svn(vec2(uu * 26.0 - uTime * 2.6, vSZ * 22.0));
            vec3 water = vec3(0.45, 0.68, 0.82); // lighter, more natural river blue
            // foam streaks, and whiten as it nears the brink so it blends into the fall
-           water = mix(water, vec3(1.0), smoothstep(0.66, 0.96, foam) * 0.4 + smoothstep(0.62, 1.0, uu) * 0.75);
+           water = mix(water, vec3(1.0), smoothstep(0.66, 0.96, foam) * 0.4 + smoothstep(0.7, 1.0, uu) * 0.4);
            diffuseColor.rgb *= water;`
         );
     };
@@ -731,7 +731,7 @@ function HeroIsland({ material }: { material: THREE.Material }) {
         <ShaderWaterfall position={[3.4, -3.6, 0]} width={0.66} height={7.3} faceAxis="x" />
 
         {/* churning foam right at the brink, hides the stream/fall seam + reads as real */}
-        <Sparkles count={70} scale={[0.66, 0.22, 0.5]} position={[3.32, -0.08, 0]} size={9} speed={reduced ? 0 : 1.3} opacity={0.9} color="#ffffff" />
+        <Sparkles count={140} scale={[0.95, 0.55, 0.75]} position={[3.34, -0.05, 0]} size={16} speed={reduced ? 0 : 1.2} opacity={0.95} color="#ffffff" />
 
         {/* white spray at the falls (points, never transparent panels) */}
         <Sparkles count={55} scale={[0.7, 2.6, 0.5]} position={[-0.66, 1.85, 0]} size={4} speed={reduced ? 0 : 0.7} opacity={0.6} color="#ffffff" />
