@@ -158,7 +158,7 @@ function islandTopHeight(X: number, Z: number): number | null {
   const along = Math.max(0, dx) * THREE.MathUtils.smoothstep(rr, 0.12, 1.0);
   const w = 0.13;
   const hollow = adz < w ? 1 - (adz / w) * (adz / w) : 0;
-  Y -= hollow * 0.28 * along;
+  Y -= hollow * 0.14 * along;
   return Y;
 }
 
@@ -605,8 +605,8 @@ function WaterPool({
 
 /* ---------------- Stream: a ribbon of flowing water hugging the channel ---------------- */
 const STREAM_X0 = -0.65; // starts at the upper fall's landing pool
-const STREAM_X1 = 3.35; // ends at the rim
-const STREAM_HALFW = 0.26; // runs between the raised banks
+const STREAM_X1 = 2.75; // ends well before the rim, on flat ground (no fold)
+const STREAM_HALFW = 0.3; // wide enough to cover the cleared strip (no bare dirt line)
 function buildStreamGeometry() {
   const N = 48;
   const g = new THREE.PlaneGeometry(1, 1, N, 1);
@@ -634,10 +634,10 @@ function Stream() {
     const m = new THREE.MeshStandardMaterial({
       color: "#ffffff",
       transparent: false, // opaque so it never mis-sorts against the falls
-      roughness: 0.55, // matte water, not a chrome mirror
+      roughness: 0.9, // fully matte, never a mirror
       metalness: 0,
-      envMapIntensity: 0.25,
-      side: THREE.DoubleSide,
+      envMapIntensity: 0.0,
+      side: THREE.FrontSide,
     });
     m.onBeforeCompile = (sh) => {
       sh.uniforms.uTime = uniforms.uTime;
@@ -666,7 +666,7 @@ function Stream() {
            float fl  = svn(vec2(u * 16.0 - t * 1.8, vSZ * 20.0)) + 0.5 * svn(vec2(u * 7.0 - t * 1.1, vSZ * 9.0));
            float flx = svn(vec2((u + e) * 16.0 - t * 1.8, vSZ * 20.0)) + 0.5 * svn(vec2((u + e) * 7.0 - t * 1.1, vSZ * 9.0));
            float flz = svn(vec2(u * 16.0 - t * 1.8, (vSZ + e) * 20.0)) + 0.5 * svn(vec2(u * 7.0 - t * 1.1, (vSZ + e) * 9.0));
-           normal = normalize(normal + vec3((fl - flx) / e * 0.22, 0.0, (fl - flz) / e * 0.22));`
+           normal = normalize(normal + vec3((fl - flx) / e * 0.07, 0.0, (fl - flz) / e * 0.07));`
         )
         .replace(
           "#include <map_fragment>",
@@ -674,7 +674,7 @@ function Stream() {
            float foam = svn(vec2(uu * 26.0 - uTime * 2.6, vSZ * 22.0));
            vec3 water = vec3(0.45, 0.68, 0.82); // lighter, more natural river blue
            // foam streaks + brighter as it nears the lip
-           water = mix(water, vec3(1.0), smoothstep(0.6, 0.95, foam) * 0.5 + smoothstep(0.72, 1.0, uu) * 0.35);
+           water = mix(water, vec3(1.0), smoothstep(0.66, 0.96, foam) * 0.4);
            diffuseColor.rgb *= water;`
         );
     };
@@ -730,7 +730,7 @@ function HeroIsland({ material }: { material: THREE.Material }) {
         <Stream />
 
         {/* the lower fall pours off the cliff into the cloud sea */}
-        <ShaderWaterfall position={[3.4, -3.75, 0]} width={0.5} height={7.5} faceAxis="x" />
+        <ShaderWaterfall position={[3.4, -4.05, 0]} width={0.5} height={7.2} faceAxis="x" />
 
         {/* white spray at the falls (points, never transparent panels) */}
         <Sparkles count={55} scale={[0.7, 2.6, 0.5]} position={[-0.66, 1.85, 0]} size={4} speed={reduced ? 0 : 0.7} opacity={0.6} color="#ffffff" />
@@ -1239,7 +1239,7 @@ function Grass({ count = 16000 }: { count?: number }) {
       const Y = islandTopHeight(X, Z);
       if (Y === null) continue;
       // keep the channel (water + its walls) clear of grass; grass tops the banks
-      if (Math.abs(Z) < 0.34 && X > -0.95) continue;
+      if (Math.abs(Z) < 0.3 && X > -0.95) continue;
       // leave a clearing where the figure sits
       if (Math.hypot(X - CODER_POS[0], Z - CODER_POS[2]) < 0.7) continue;
       dummy.position.set(X, Y - 0.02, Z);
