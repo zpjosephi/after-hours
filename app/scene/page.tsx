@@ -707,7 +707,7 @@ function HeroIsland({ material }: { material: THREE.Material }) {
         <mesh geometry={geo} material={material} castShadow receiveShadow />
         <Grass />
         {/* real tree, off to the back away from the water */}
-        <RealTree position={[-0.2, 0.42, -1.7]} scale={1.0} />
+        <RealTree position={[0.7, 0.42, -1.85]} scale={1.0} />
         {/* a real person working at the rim; the laptop is parented to their spine bone */}
         <Person position={CODER_POS} scale={1.0} rotation={1.0} />
         <Roots material={barkMat} />
