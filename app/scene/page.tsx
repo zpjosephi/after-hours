@@ -602,8 +602,11 @@ function buildStreamGeometry() {
     const u = pos.getX(i) + 0.5; // 0..1 along the flow
     const v = pos.getY(i) + 0.5; // 0..1 across
     const x = STREAM_X0 + (STREAM_X1 - STREAM_X0) * u;
-    const halfW = STREAM_HALFW - 0.04 * u; // roughly the waterfall width
-    const z = (v - 0.5) * 2 * halfW;
+    // gentle meander + width that breathes, so it isn't a dead-straight ribbon
+    const straighten = 1 - THREE.MathUtils.smoothstep(u, 0.82, 1.0); // run straight at the brink
+    const meander = Math.sin(u * Math.PI * 2.3) * 0.14 * straighten;
+    const halfW = (STREAM_HALFW - 0.04 * u) * (0.82 + 0.22 * Math.sin(u * Math.PI * 3.1));
+    const z = (v - 0.5) * 2 * halfW + meander;
     const h = islandTopHeight(x, z);
     // on the plateau, hug the terrain; past the rim, curl down over the edge so
     // the stream pours straight into the fall with no strip of land showing
@@ -652,9 +655,12 @@ function Stream() {
           `float u = clamp((vSX - ${STREAM_X0.toFixed(2)}) / (${(STREAM_X1 - STREAM_X0).toFixed(2)}), 0.0, 1.0);
            float t = uTime;
            float e = 0.03;
-           float fl  = svn(vec2(u * 14.0 - t * 1.8, vSZ * 18.0));
-           float flx = svn(vec2((u + e) * 14.0 - t * 1.8, vSZ * 18.0));
-           normal = normalize(normal + vec3((fl - flx) / e * 0.12, 0.0, 0.0));`
+           // ripples along the flow and little cross-wavelets, so the surface
+           // catches light and reads as moving water rather than a flat sheet
+           float fl  = svn(vec2(u * 16.0 - t * 1.8, vSZ * 20.0)) + 0.5 * svn(vec2(u * 7.0 - t * 1.1, vSZ * 9.0));
+           float flx = svn(vec2((u + e) * 16.0 - t * 1.8, vSZ * 20.0)) + 0.5 * svn(vec2((u + e) * 7.0 - t * 1.1, vSZ * 9.0));
+           float flz = svn(vec2(u * 16.0 - t * 1.8, (vSZ + e) * 20.0)) + 0.5 * svn(vec2(u * 7.0 - t * 1.1, (vSZ + e) * 9.0));
+           normal = normalize(normal + vec3((fl - flx) / e * 0.22, 0.0, (fl - flz) / e * 0.22));`
         )
         .replace(
           "#include <map_fragment>",
