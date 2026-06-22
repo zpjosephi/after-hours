@@ -695,6 +695,10 @@ function HeroIsland({ material }: { material: THREE.Material }) {
     () => new THREE.MeshStandardMaterial({ color: "#4a3623", roughness: 1, metalness: 0 }),
     []
   );
+  const springMat = useMemo(
+    () => new THREE.MeshStandardMaterial({ color: "#6fa8c4", roughness: 0.5, metalness: 0 }),
+    []
+  );
   const reduced = useContext(ReducedMotion);
   return (
     <Float
@@ -721,11 +725,15 @@ function HeroIsland({ material }: { material: THREE.Material }) {
           castShadow
           receiveShadow
         />
-        {/* the upper fall pours down the rock face onto the plateau */}
+        {/* spring pool on the rock summit: the visible source the upper fall flows from */}
+        <mesh material={springMat} position={[-1.05, 3.55, 0]} rotation={[-Math.PI / 2 + 0.32, 0, 0]}>
+          <circleGeometry args={[0.46, 28]} />
+        </mesh>
+        {/* the upper fall pours from the spring down the rock face onto the plateau */}
         <ShaderWaterfall position={[-0.66, 2.0, 0]} width={0.92} height={3.0} faceAxis="x" />
-        {/* foam where it springs out of the rock, so the source doesn't look spawned */}
+        {/* foam where the spring spills into the fall, so the source doesn't look spawned */}
         <Clouds material={THREE.MeshBasicMaterial} limit={30}>
-          <Cloud seed={21} bounds={[0.6, 0.5, 1.0]} volume={1.4} segments={18} color="#ffffff" opacity={0.9} fade={1.0} speed={0} growth={0} position={[-0.64, 3.4, 0]} />
+          <Cloud seed={21} bounds={[0.55, 0.45, 0.95]} volume={1.2} segments={18} color="#ffffff" opacity={0.85} fade={1.0} speed={0} growth={0} position={[-0.66, 3.35, 0]} />
         </Clouds>
 
         {/* the (opaque) stream carries the water across the plateau to the rim */}
