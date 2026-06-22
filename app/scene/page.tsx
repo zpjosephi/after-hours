@@ -592,7 +592,7 @@ function WaterPool({
 
 /* ---------------- Stream: a ribbon of flowing water hugging the channel ---------------- */
 const STREAM_X0 = -0.65; // starts at the upper fall's landing pool
-const STREAM_X1 = 3.32;
+const STREAM_X1 = 3.85; // runs past the rim and curls over the edge
 const STREAM_HALFW = 0.46; // half-width, matched to the waterfalls
 function buildStreamGeometry() {
   const N = 48;
@@ -605,7 +605,10 @@ function buildStreamGeometry() {
     const halfW = STREAM_HALFW - 0.04 * u; // roughly the waterfall width
     const z = (v - 0.5) * 2 * halfW;
     const h = islandTopHeight(x, z);
-    const Y = (h === null ? ISLE.lipY : h) + 0.05;
+    // on the plateau, hug the terrain; past the rim, curl down over the edge so
+    // the stream pours straight into the fall with no strip of land showing
+    const over = Math.max(0, x - (ISLE.topR - 0.15));
+    const Y = (h === null ? ISLE.lipY : h) + 0.05 - over * over * 3.0;
     pos.setXYZ(i, x, Y, z);
   }
   pos.needsUpdate = true;
@@ -716,8 +719,9 @@ function HeroIsland({ material }: { material: THREE.Material }) {
         {/* the stream carries the water across the plateau to the rim */}
         <Stream />
 
-        {/* CASCADE, tier 2: over the cliff and down into the cloud sea */}
-        <ShaderWaterfall position={[3.45, -4.1, 0]} width={0.95} height={7} faceAxis="x" />
+        {/* CASCADE, tier 2: over the cliff and down into the cloud sea
+            (top lifted to overlap the rim so no strip of land shows at the brink) */}
+        <ShaderWaterfall position={[3.4, -3.85, 0]} width={0.95} height={7.3} faceAxis="x" />
 
         {/* misty spray columns running the length of each fall, plus heavier mist at the feet */}
         <Sparkles count={70} scale={[0.7, 2.6, 0.55]} position={[-0.66, 1.85, 0]} size={4} speed={reduced ? 0 : 0.7} opacity={0.6} color="#ffffff" />
