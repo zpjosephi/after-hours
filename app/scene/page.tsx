@@ -559,6 +559,33 @@ function HeroIsland({ material }: { material: THREE.Material }) {
   );
 }
 
+/* ---------------- Distant islands: same terrain, small and hazy ---------------- */
+function DistantIsland({
+  geometry,
+  material,
+  position,
+  scale,
+  floatSpeed,
+}: {
+  geometry: THREE.BufferGeometry;
+  material: THREE.Material;
+  position: [number, number, number];
+  scale: number;
+  floatSpeed: number;
+}) {
+  const reduced = useContext(ReducedMotion);
+  return (
+    <Float
+      speed={reduced ? 0 : floatSpeed}
+      rotationIntensity={reduced ? 0 : 0.05}
+      floatIntensity={reduced ? 0 : 0.7}
+      floatingRange={[-0.3, 0.3]}
+    >
+      <mesh geometry={geometry} material={material} position={position} scale={scale} castShadow />
+    </Float>
+  );
+}
+
 /* ---------------- A seated figure: the scene's quiet focal point ---------------- */
 function SeatedFigure({
   position,
@@ -758,6 +785,7 @@ function Grass({ count = 16000 }: { count?: number }) {
 function Scene({ reduced }: { reduced: boolean }) {
   const [sun, setSun] = useState<THREE.Mesh | null>(null);
   const rockMat = useRockMaterial();
+  const distantGeo = useIslandGeometry(3); // shared low-poly terrain for background islands
 
   return (
     <ReducedMotion.Provider value={reduced}>
@@ -789,10 +817,10 @@ function Scene({ reduced }: { reduced: boolean }) {
       {/* the hero: one detailed island carrying the tree + roots */}
       <HeroIsland material={rockMat} />
 
-      {/* distant supporting islands — small, set back so they read as hazy silhouettes */}
-      <Island position={[-6, 4.3, -8]} scale={0.45} floatSpeed={0.7} material={rockMat} />
-      <Island position={[6.6, 3.6, -9]} scale={0.4} floatSpeed={0.95} material={rockMat} />
-      <Island position={[5.6, -3, -7]} scale={0.5} floatSpeed={1.2} material={rockMat} />
+      {/* distant supporting islands — same terrain, small and set back into the haze */}
+      <DistantIsland geometry={distantGeo} material={rockMat} position={[-7.5, 4.6, -11]} scale={0.22} floatSpeed={0.7} />
+      <DistantIsland geometry={distantGeo} material={rockMat} position={[8, 3.7, -12]} scale={0.19} floatSpeed={0.95} />
+      <DistantIsland geometry={distantGeo} material={rockMat} position={[6.5, -3.6, -9]} scale={0.26} floatSpeed={1.2} />
 
       {/* birds wheeling through the upper sky */}
       <Birds />
