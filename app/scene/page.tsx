@@ -926,9 +926,9 @@ function Person({
     const hips = bones.current.hips;
     if (!g || !hips) return;
     hips.getWorldPosition(tmpA);
-    tmpA.x += Math.sin(rotation) * 0.3; // forward onto the lap, toward the knees
-    tmpA.z += Math.cos(rotation) * 0.3;
-    tmpA.y += 0.04; // rest on top of the thighs, not clipping into them
+    tmpA.x += Math.sin(rotation) * 0.42; // forward onto the lap, keyboard under the hands
+    tmpA.z += Math.cos(rotation) * 0.42;
+    tmpA.y += 0.03; // rest on top of the thighs, not clipping into them
     if (g.parent) g.parent.worldToLocal(tmpA);
     g.position.copy(tmpA);
     g.rotation.set(0.05, rotation + Math.PI, 0); // screen faces the person
