@@ -509,24 +509,67 @@ function Roots({ material }: { material: THREE.Material }) {
   );
 }
 
+/* ---------------- Reflective water pool with animated ripples ---------------- */
+function WaterPool({
+  position,
+  radius,
+}: {
+  position: [number, number, number];
+  radius: number;
+}) {
+  const reduced = useContext(ReducedMotion);
+  const uniforms = useMemo(() => ({ uTime: { value: 0 } }), []);
+  const mat = useMemo(() => {
+    const m = new THREE.MeshStandardMaterial({
+      color: "#2f6b7e",
+      transparent: true,
+      opacity: 0.86,
+      roughness: 0.05,
+      metalness: 0,
+      envMapIntensity: 1.25,
+    });
+    m.onBeforeCompile = (sh) => {
+      sh.uniforms.uTime = uniforms.uTime;
+      sh.vertexShader = sh.vertexShader
+        .replace("#include <common>", "#include <common>\nvarying vec2 vPXZ;")
+        .replace(
+          "#include <begin_vertex>",
+          "#include <begin_vertex>\nvPXZ = (modelMatrix * vec4(position, 1.0)).xz;"
+        );
+      sh.fragmentShader = sh.fragmentShader
+        .replace("#include <common>", "#include <common>\nuniform float uTime;\nvarying vec2 vPXZ;")
+        .replace(
+          "#include <normal_fragment_maps>",
+          `vec2 p = vPXZ * 6.0;
+           float t = uTime * 1.1;
+           float e = 0.08;
+           #define WAVE(q) (sin((q).x * 1.3 + t) * 0.5 + sin((q).y * 1.7 - t * 1.1) * 0.5 + sin(((q).x + (q).y) * 2.3 + t * 0.7) * 0.3)
+           float h  = WAVE(p);
+           float hx = WAVE(p + vec2(e, 0.0));
+           float hy = WAVE(p + vec2(0.0, e));
+           vec3 ripple = normalize(vec3((h - hx) / e * 0.15, 1.0, (h - hy) / e * 0.15));
+           normal = normalize(normal + ripple * 0.4);`
+        );
+    };
+    m.customProgramCacheKey = () => "water-ripple-v1";
+    return m;
+  }, [uniforms]);
+  useFrame((s) => {
+    if (!reduced) uniforms.uTime.value = s.clock.elapsedTime;
+  });
+  return (
+    <mesh material={mat} position={position} rotation={[-Math.PI / 2, 0, 0]}>
+      <circleGeometry args={[radius, 36]} />
+    </mesh>
+  );
+}
+
 /* ---------------- Hero island: rock + tree + roots, bobbing as one ---------------- */
 function HeroIsland({ material }: { material: THREE.Material }) {
   // wide terrain island, smooth and expansive
   const geo = useIslandGeometry(6);
   const barkMat = useMemo(
     () => new THREE.MeshStandardMaterial({ color: "#4a3623", roughness: 1, metalness: 0 }),
-    []
-  );
-  const waterMat = useMemo(
-    () =>
-      new THREE.MeshStandardMaterial({
-        color: "#3c7e96",
-        transparent: true,
-        opacity: 0.8,
-        roughness: 0.05,
-        metalness: 0,
-        envMapIntensity: 1.1,
-      }),
     []
   );
   const reduced = useContext(ReducedMotion);
@@ -545,13 +588,9 @@ function HeroIsland({ material }: { material: THREE.Material }) {
         <SeatedFigure position={[0.55, 0.5, 0.7]} scale={0.8} />
         <Roots material={barkMat} />
         {/* spring pool near the clearing, feeding the channel */}
-        <mesh material={waterMat} position={[0.15, 0.47, -0.1]} rotation={[-Math.PI / 2, 0, 0]}>
-          <circleGeometry args={[0.5, 24]} />
-        </mesh>
+        <WaterPool position={[0.15, 0.47, -0.1]} radius={0.5} />
         {/* basin at the rim that overflows into the fall */}
-        <mesh material={waterMat} position={[2.35, -0.2, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-          <circleGeometry args={[0.62, 28]} />
-        </mesh>
+        <WaterPool position={[2.35, -0.2, 0]} radius={0.62} />
         {/* waterfall leaves the carved notch in the rim and drops down the cliff */}
         <ShaderWaterfall position={[3.45, -4.1, 0]} width={1.1} height={7} faceAxis="x" />
       </group>
