@@ -671,8 +671,8 @@ function Stream() {
           `float uu = clamp((vSX - ${STREAM_X0.toFixed(2)}) / (${(STREAM_X1 - STREAM_X0).toFixed(2)}), 0.0, 1.0);
            float foam = svn(vec2(uu * 26.0 - uTime * 2.6, vSZ * 22.0));
            vec3 water = vec3(0.45, 0.68, 0.82); // lighter, more natural river blue
-           // foam streaks + brighter as it nears the lip
-           water = mix(water, vec3(1.0), smoothstep(0.66, 0.96, foam) * 0.4);
+           // foam streaks, and whiten as it nears the brink so it blends into the fall
+           water = mix(water, vec3(1.0), smoothstep(0.66, 0.96, foam) * 0.4 + smoothstep(0.62, 1.0, uu) * 0.75);
            diffuseColor.rgb *= water;`
         );
     };
