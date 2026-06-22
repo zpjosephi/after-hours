@@ -153,14 +153,12 @@ function islandTopHeight(X: number, Z: number): number | null {
   let Y = ny * plateauH + hills;
   const horiz = Math.max(1e-5, Math.hypot(nx, nz));
   const dx = nx / horiz, dz = nz / horiz;
-  // riverbed toward +X: a gentle hollow under the water PLUS raised earth banks
-  // on either side, so the water clearly runs between two embankments
+  // riverbed toward +X: a gentle smooth hollow the water sits in (no raised banks)
   const adz = Math.abs(dz);
   const along = Math.max(0, dx) * THREE.MathUtils.smoothstep(rr, 0.12, 1.0);
   const w = 0.13;
-  const hollow = adz < w ? 1 - (adz / w) * (adz / w) : 0; // dip under the water
-  const bank = Math.exp(-((adz - 0.2) * (adz - 0.2)) / 0.0025); // raised berm just outside it
-  Y += (-hollow * 0.28 + bank * 0.42) * along;
+  const hollow = adz < w ? 1 - (adz / w) * (adz / w) : 0;
+  Y -= hollow * 0.28 * along;
   return Y;
 }
 
@@ -674,9 +672,9 @@ function Stream() {
           "#include <map_fragment>",
           `float uu = clamp((vSX - ${STREAM_X0.toFixed(2)}) / (${(STREAM_X1 - STREAM_X0).toFixed(2)}), 0.0, 1.0);
            float foam = svn(vec2(uu * 26.0 - uTime * 2.6, vSZ * 22.0));
-           vec3 water = vec3(0.22, 0.45, 0.5);
+           vec3 water = vec3(0.45, 0.68, 0.82); // lighter, more natural river blue
            // foam streaks + brighter as it nears the lip
-           water = mix(water, vec3(1.0), smoothstep(0.62, 0.96, foam) * 0.55 + smoothstep(0.72, 1.0, uu) * 0.35);
+           water = mix(water, vec3(1.0), smoothstep(0.6, 0.95, foam) * 0.5 + smoothstep(0.72, 1.0, uu) * 0.35);
            diffuseColor.rgb *= water;`
         );
     };
