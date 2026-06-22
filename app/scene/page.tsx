@@ -122,7 +122,7 @@ function useRockMaterial() {
     });
 
     const uScale = { value: 0.55 };
-    const uNormStr = { value: 0.7 };
+    const uNormStr = { value: 0.95 };
 
     mat.onBeforeCompile = (shader) => {
       shader.uniforms.uScale = uScale;
@@ -325,7 +325,6 @@ function Tree({
         color: "#6f8f43",
         roughness: 0.82,
         metalness: 0,
-        flatShading: true,
         envMapIntensity: 0.4,
       }),
     []
@@ -334,27 +333,27 @@ function Tree({
     <group position={position} scale={scale}>
       {/* trunk, leaning a touch */}
       <mesh material={barkMat} position={[0, 0.7, 0]} rotation={[0, 0, 0.07]} castShadow>
-        <cylinderGeometry args={[0.07, 0.17, 1.5, 8]} />
+        <cylinderGeometry args={[0.07, 0.17, 1.5, 12]} />
       </mesh>
       {/* two branches */}
       <mesh material={barkMat} position={[0.16, 1.2, 0.02]} rotation={[0, 0, -0.8]} castShadow>
-        <cylinderGeometry args={[0.025, 0.07, 0.75, 6]} />
+        <cylinderGeometry args={[0.025, 0.07, 0.75, 8]} />
       </mesh>
       <mesh material={barkMat} position={[-0.14, 1.05, -0.05]} rotation={[0.2, 0, 0.7]} castShadow>
-        <cylinderGeometry args={[0.025, 0.06, 0.6, 6]} />
+        <cylinderGeometry args={[0.025, 0.06, 0.6, 8]} />
       </mesh>
-      {/* canopy: overlapping faceted blobs */}
+      {/* canopy: overlapping smooth blobs (higher subdivision = no facets) */}
       <mesh material={leafMat} position={[0, 1.75, 0]} castShadow>
-        <icosahedronGeometry args={[0.66, 1]} />
+        <icosahedronGeometry args={[0.66, 3]} />
       </mesh>
       <mesh material={leafMat} position={[0.42, 1.5, 0.16]} castShadow>
-        <icosahedronGeometry args={[0.4, 1]} />
+        <icosahedronGeometry args={[0.4, 3]} />
       </mesh>
       <mesh material={leafMat} position={[-0.38, 1.55, -0.12]} castShadow>
-        <icosahedronGeometry args={[0.43, 1]} />
+        <icosahedronGeometry args={[0.43, 3]} />
       </mesh>
       <mesh material={leafMat} position={[0.08, 2.12, -0.05]} castShadow>
-        <icosahedronGeometry args={[0.34, 1]} />
+        <icosahedronGeometry args={[0.34, 3]} />
       </mesh>
     </group>
   );
@@ -389,7 +388,8 @@ function Roots({ material }: { material: THREE.Material }) {
 
 /* ---------------- Hero island: rock + tree + roots, bobbing as one ---------------- */
 function HeroIsland({ material }: { material: THREE.Material }) {
-  const geo = useRockGeometry(1.1, 4, 0.2);
+  // higher subdivision so the hero reads as a smooth rock, not a faceted gem
+  const geo = useRockGeometry(1.1, 6, 0.2);
   const barkMat = useMemo(
     () => new THREE.MeshStandardMaterial({ color: "#4a3623", roughness: 1, metalness: 0 }),
     []
@@ -405,9 +405,114 @@ function HeroIsland({ material }: { material: THREE.Material }) {
       <group position={[0, 0.3, 0]}>
         <mesh geometry={geo} material={material} scale={[1.7, 2.45, 1.7]} castShadow receiveShadow />
         <Tree position={[0, 1.95, 0]} scale={1.05} />
+        <SeatedFigure position={[0.18, 1.98, 0.66]} scale={0.5} />
         <Roots material={barkMat} />
       </group>
     </Float>
+  );
+}
+
+/* ---------------- A seated figure: the scene's quiet focal point ---------------- */
+function SeatedFigure({
+  position,
+  scale = 1,
+}: {
+  position: [number, number, number];
+  scale?: number;
+}) {
+  const mat = useMemo(
+    () => new THREE.MeshStandardMaterial({ color: "#26252b", roughness: 0.95, metalness: 0 }),
+    []
+  );
+  return (
+    <group position={position} scale={scale} rotation={[0, -0.7, 0]}>
+      <mesh material={mat} position={[0, 0.18, 0]} castShadow>
+        <boxGeometry args={[0.26, 0.18, 0.22]} />
+      </mesh>
+      <mesh material={mat} position={[0, 0.44, -0.04]} rotation={[-0.18, 0, 0]} castShadow>
+        <capsuleGeometry args={[0.12, 0.26, 4, 8]} />
+      </mesh>
+      <mesh material={mat} position={[0, 0.74, 0.02]} castShadow>
+        <sphereGeometry args={[0.1, 16, 16]} />
+      </mesh>
+      {/* thighs forward, shins down — a sitting pose */}
+      <mesh material={mat} position={[0, 0.13, 0.24]} rotation={[1.25, 0, 0]} castShadow>
+        <capsuleGeometry args={[0.07, 0.3, 4, 8]} />
+      </mesh>
+      {/* an arm resting on the knee */}
+      <mesh material={mat} position={[0.13, 0.3, 0.18]} rotation={[0.9, 0, -0.2]} castShadow>
+        <capsuleGeometry args={[0.05, 0.24, 4, 8]} />
+      </mesh>
+    </group>
+  );
+}
+
+/* ---------------- Birds: low-poly silhouettes wheeling in the sky ---------------- */
+function Bird({
+  radius,
+  height,
+  phase,
+  speed,
+  flap,
+  material,
+}: {
+  radius: number;
+  height: number;
+  phase: number;
+  speed: number;
+  flap: number;
+  material: THREE.Material;
+}) {
+  const reduced = useContext(ReducedMotion);
+  const g = useRef<THREE.Group>(null);
+  const lw = useRef<THREE.Group>(null);
+  const rw = useRef<THREE.Group>(null);
+  useFrame((state) => {
+    const e = reduced ? 0 : state.clock.elapsedTime;
+    const t = e * speed + phase;
+    if (g.current) {
+      g.current.position.set(Math.cos(t) * radius, height + Math.sin(t * 2) * 0.25, Math.sin(t) * radius - 2);
+      g.current.rotation.y = -t;
+    }
+    const a = (reduced ? 0.25 : Math.sin(e * flap) * 0.5 + 0.25);
+    if (lw.current) lw.current.rotation.z = a;
+    if (rw.current) rw.current.rotation.z = -a;
+  });
+  return (
+    <group ref={g}>
+      <group ref={lw}>
+        <mesh material={material} position={[-0.26, 0, 0]}>
+          <boxGeometry args={[0.52, 0.018, 0.13]} />
+        </mesh>
+      </group>
+      <group ref={rw}>
+        <mesh material={material} position={[0.26, 0, 0]}>
+          <boxGeometry args={[0.52, 0.018, 0.13]} />
+        </mesh>
+      </group>
+    </group>
+  );
+}
+
+function Birds() {
+  const mat = useMemo(() => new THREE.MeshBasicMaterial({ color: "#2c2b33" }), []);
+  const flock = useMemo(
+    () =>
+      Array.from({ length: 7 }, (_, i) => ({
+        radius: 7 + (i % 3) * 1.8,
+        height: 4.2 + (i % 4) * 0.7,
+        phase: (i / 7) * Math.PI * 2,
+        speed: 0.1 + (i % 3) * 0.025,
+        flap: 5 + (i % 4),
+      })),
+    []
+  );
+  return (
+    <group scale={0.6}>
+      {flock.map((b, i) => (
+        <Bird key={i} material={mat} {...b} />
+      ))}
+    </group>
   );
 }
 
@@ -453,6 +558,9 @@ function Scene({ reduced }: { reduced: boolean }) {
 
       {/* the waterfall pouring off the hero island into the cloud sea */}
       <ShaderWaterfall position={[0.2, -2.4, 0.35]} width={1.4} height={6.5} />
+
+      {/* birds wheeling through the upper sky */}
+      <Birds />
 
       {/* drifting dust motes */}
       <Sparkles count={140} scale={[24, 13, 24]} size={3} speed={reduced ? 0 : 0.3} opacity={0.5} color="#ffe9c8" />
