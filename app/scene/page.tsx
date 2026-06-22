@@ -1116,6 +1116,18 @@ function Coder({
 }
 
 /* ---------------- Birds: low-poly silhouettes wheeling in the sky ---------------- */
+// a tapered, swept-back wing (triangle): wide at the body root, pointed at the tip
+const birdWingGeometry = (() => {
+  const g = new THREE.BufferGeometry();
+  g.setAttribute(
+    "position",
+    new THREE.Float32BufferAttribute([0, 0, 0.07, 0, 0, -0.11, 0.5, 0, -0.16], 3)
+  );
+  g.setIndex([0, 1, 2]);
+  g.computeVertexNormals();
+  return g;
+})();
+
 function Bird({
   radius,
   height,
@@ -1148,15 +1160,16 @@ function Bird({
   });
   return (
     <group ref={g}>
-      <group ref={lw}>
-        <mesh material={material} position={[-0.26, 0, 0]}>
-          <boxGeometry args={[0.52, 0.018, 0.13]} />
-        </mesh>
-      </group>
+      {/* slim body along the flight direction */}
+      <mesh material={material} scale={[0.5, 0.5, 1.7]}>
+        <sphereGeometry args={[0.07, 8, 6]} />
+      </mesh>
+      {/* tapered swept wings, flapping from the body root */}
       <group ref={rw}>
-        <mesh material={material} position={[0.26, 0, 0]}>
-          <boxGeometry args={[0.52, 0.018, 0.13]} />
-        </mesh>
+        <mesh geometry={birdWingGeometry} material={material} />
+      </group>
+      <group ref={lw} scale={[-1, 1, 1]}>
+        <mesh geometry={birdWingGeometry} material={material} />
       </group>
     </group>
   );
