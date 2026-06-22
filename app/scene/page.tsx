@@ -153,8 +153,10 @@ function islandTopHeight(X: number, Z: number): number | null {
   let Y = ny * plateauH + hills;
   const horiz = Math.max(1e-5, Math.hypot(nx, nz));
   const dx = nx / horiz, dz = nz / horiz;
-  const channel = Math.max(0, dx) * Math.exp(-(dz * dz) / 0.05);
-  Y -= channel * 0.3 * THREE.MathUtils.smoothstep(rr, 0.1, 1.0);
+  // a defined trench (riverbed) toward +X: narrower and deeper, with banks, so the
+  // stream sits recessed in it instead of lying flat like a sheet of paper
+  const channel = Math.max(0, dx) * Math.exp(-(dz * dz) / 0.03);
+  Y -= channel * 0.6 * THREE.MathUtils.smoothstep(rr, 0.12, 1.0);
   return Y;
 }
 
@@ -600,7 +602,7 @@ function WaterPool({
 /* ---------------- Stream: a ribbon of flowing water hugging the channel ---------------- */
 const STREAM_X0 = -0.65; // starts at the upper fall's landing pool
 const STREAM_X1 = 3.35; // ends at the rim
-const STREAM_HALFW = 0.46; // half-width, matched to the waterfalls
+const STREAM_HALFW = 0.32; // narrower so it sits inside the trench, banks showing
 function buildStreamGeometry() {
   const N = 48;
   const g = new THREE.PlaneGeometry(1, 1, N, 1);
@@ -726,11 +728,10 @@ function HeroIsland({ material }: { material: THREE.Material }) {
         {/* the stream carries the water across the plateau to the rim */}
         <Stream />
 
-        {/* CASCADE, tier 2: over the cliff and down into the cloud sea
-            (top raised above the stream so the sheet covers the brown lip) */}
-        <ShaderWaterfall position={[3.4, -3.7, 0]} width={1.1} height={7.9} faceAxis="x" />
+        {/* CASCADE, tier 2: pours from the trench mouth down into the cloud sea */}
+        <ShaderWaterfall position={[3.4, -3.75, 0]} width={0.74} height={7.5} faceAxis="x" />
         {/* mist veil over the brink to soften the rocky lip, like real spray */}
-        <Sparkles count={90} scale={[1.4, 0.7, 1.1]} position={[3.35, -0.45, 0]} size={7} speed={reduced ? 0 : 0.7} opacity={0.7} color="#ffffff" />
+        <Sparkles count={80} scale={[0.9, 0.7, 0.9]} position={[3.35, -0.5, 0]} size={7} speed={reduced ? 0 : 0.7} opacity={0.7} color="#ffffff" />
 
         {/* misty spray columns running the length of each fall, plus heavier mist at the feet */}
         <Sparkles count={70} scale={[0.7, 2.6, 0.55]} position={[-0.66, 1.85, 0]} size={4} speed={reduced ? 0 : 0.7} opacity={0.6} color="#ffffff" />
