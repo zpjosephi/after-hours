@@ -695,9 +695,8 @@ function HeroIsland({ material }: { material: THREE.Material }) {
         <Grass />
         {/* real tree, off to the back away from the water */}
         <RealTree position={[-0.2, 0.42, -1.7]} scale={1.0} />
-        {/* a real person working at the rim, laptop in their lap */}
+        {/* a real person working at the rim; the laptop is parented to their spine bone */}
         <Person position={CODER_POS} scale={1.0} rotation={1.0} />
-        <Laptop position={[2.52, 0.82, 1.46]} scale={0.8} rotation={-2.14} />
         <Roots material={barkMat} />
 
         {/* CASCADE, tier 1: a tall rock outcrop the upper fall pours from */}
@@ -847,6 +846,34 @@ function Angler({
   );
 }
 
+/* a laptop as a plain THREE group so it can be parented to a hand/spine bone */
+function buildLaptop() {
+  const g = new THREE.Group();
+  const metal = new THREE.MeshStandardMaterial({ color: "#3a3d44", roughness: 0.45, metalness: 0.6 });
+  const screenMat = new THREE.MeshStandardMaterial({
+    color: "#0a0e16",
+    emissive: new THREE.Color("#cfe0ff"),
+    emissiveIntensity: 2.2,
+    roughness: 0.4,
+  });
+  const base = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.02, 0.2), metal);
+  base.castShadow = true;
+  g.add(base);
+  const lid = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.18, 0.02), metal);
+  lid.position.set(0, 0.095, -0.095);
+  lid.rotation.x = -0.42;
+  lid.castShadow = true;
+  g.add(lid);
+  const scr = new THREE.Mesh(new THREE.PlaneGeometry(0.22, 0.15), screenMat);
+  scr.position.set(0, 0.095, -0.083);
+  scr.rotation.x = -0.42;
+  g.add(scr);
+  const pl = new THREE.PointLight(new THREE.Color("#bcd2f5"), 1.6, 1.5, 2);
+  pl.position.set(0, 0.14, 0.04);
+  g.add(pl);
+  return g;
+}
+
 /* ---------------- Real rigged person (Mixamo FBX), ping-pong looped ---------------- */
 function Person({
   position,
@@ -860,6 +887,11 @@ function Person({
   const reduced = useContext(ReducedMotion);
   const { scene, animations } = useGLTF("/models/person.glb");
   const { actions } = useAnimations(animations, scene);
+  const lapRef = useRef<THREE.Group>(null);
+  const hands = useRef<{ l?: THREE.Object3D | null; r?: THREE.Object3D | null }>({});
+  const lapObj = useMemo(() => buildLaptop(), []);
+  const tmpA = useMemo(() => new THREE.Vector3(), []);
+  const tmpB = useMemo(() => new THREE.Vector3(), []);
 
   useEffect(() => {
     scene.traverse((o) => {
@@ -869,6 +901,8 @@ function Person({
         m.frustumCulled = false;
       }
     });
+    hands.current.l = scene.getObjectByName("mixamorig:LeftHand");
+    hands.current.r = scene.getObjectByName("mixamorig:RightHand");
   }, [scene]);
 
   useEffect(() => {
@@ -883,7 +917,29 @@ function Person({
     };
   }, [actions, reduced]);
 
-  return <primitive object={scene} position={position} scale={scale} rotation={[0, rotation, 0]} />;
+  // each frame, sit the laptop in the midpoint of the two hands (tracks pose + bob)
+  useFrame(() => {
+    const g = lapRef.current;
+    const l = hands.current.l;
+    const r = hands.current.r;
+    if (!g || !l || !r) return;
+    l.getWorldPosition(tmpA);
+    r.getWorldPosition(tmpB);
+    tmpA.add(tmpB).multiplyScalar(0.5);
+    tmpA.y -= 0.07; // keyboard just under the hands
+    if (g.parent) g.parent.worldToLocal(tmpA);
+    g.position.copy(tmpA);
+    g.rotation.set(0.18, rotation + Math.PI, 0); // screen faces the person
+  });
+
+  return (
+    <>
+      <primitive object={scene} position={position} scale={scale} rotation={[0, rotation, 0]} />
+      <group ref={lapRef} scale={0.8}>
+        <primitive object={lapObj} />
+      </group>
+    </>
+  );
 }
 useGLTF.preload("/models/person.glb");
 
