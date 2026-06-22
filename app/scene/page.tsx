@@ -723,6 +723,10 @@ function HeroIsland({ material }: { material: THREE.Material }) {
         />
         {/* the upper fall pours down the rock face onto the plateau */}
         <ShaderWaterfall position={[-0.66, 1.85, 0]} width={0.92} height={2.6} faceAxis="x" />
+        {/* foam where it springs out of the rock, so the source doesn't look spawned */}
+        <Clouds material={THREE.MeshBasicMaterial} limit={30}>
+          <Cloud seed={21} bounds={[0.6, 0.34, 0.5]} volume={0.7} segments={16} color="#ffffff" opacity={0.8} fade={1.1} speed={0} growth={0} position={[-0.62, 3.05, 0]} />
+        </Clouds>
 
         {/* the (opaque) stream carries the water across the plateau to the rim */}
         <Stream />
