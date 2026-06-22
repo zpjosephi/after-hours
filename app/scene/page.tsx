@@ -114,7 +114,7 @@ const ISLE = {
 };
 
 // where the figure sits; grass leaves a clearing here
-const CODER_POS: [number, number, number] = [2.35, 0.06, 1.42];
+const CODER_POS: [number, number, number] = [2.35, 0.14, 1.42];
 
 // shared noise so the grass scatters onto the exact terrain the geometry builds
 const ihash3 = (x: number, y: number, z: number) =>
@@ -926,9 +926,9 @@ function Person({
     const hips = bones.current.hips;
     if (!g || !hips) return;
     hips.getWorldPosition(tmpA);
-    tmpA.x += Math.sin(rotation) * 0.17; // forward onto the lap
-    tmpA.z += Math.cos(rotation) * 0.17;
-    tmpA.y -= 0.02;
+    tmpA.x += Math.sin(rotation) * 0.16; // forward onto the lap
+    tmpA.z += Math.cos(rotation) * 0.16;
+    tmpA.y += 0.05; // rest on top of the thighs, not clipping into them
     if (g.parent) g.parent.worldToLocal(tmpA);
     g.position.copy(tmpA);
     g.rotation.set(0.05, rotation + Math.PI, 0); // screen faces the person
