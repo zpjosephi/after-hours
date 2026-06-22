@@ -158,7 +158,7 @@ function islandTopHeight(X: number, Z: number): number | null {
   const along = Math.max(0, dx) * THREE.MathUtils.smoothstep(rr, 0.12, 1.0);
   const w = 0.13;
   const hollow = adz < w ? 1 - (adz / w) * (adz / w) : 0;
-  Y -= hollow * 0.14 * along;
+  Y -= hollow * 0.1 * along;
   return Y;
 }
 
@@ -605,8 +605,8 @@ function WaterPool({
 
 /* ---------------- Stream: a ribbon of flowing water hugging the channel ---------------- */
 const STREAM_X0 = -0.65; // starts at the upper fall's landing pool
-const STREAM_X1 = 2.75; // ends well before the rim, on flat ground (no fold)
-const STREAM_HALFW = 0.3; // wide enough to cover the cleared strip (no bare dirt line)
+const STREAM_X1 = 3.05; // a longer visible river, still short of the rim drop
+const STREAM_HALFW = 0.42; // wide, clearly visible river
 function buildStreamGeometry() {
   const N = 48;
   const g = new THREE.PlaneGeometry(1, 1, N, 1);
@@ -637,7 +637,7 @@ function Stream() {
       roughness: 0.9, // fully matte, never a mirror
       metalness: 0,
       envMapIntensity: 0.0,
-      side: THREE.FrontSide,
+      side: THREE.DoubleSide,
     });
     m.onBeforeCompile = (sh) => {
       sh.uniforms.uTime = uniforms.uTime;
@@ -1239,7 +1239,7 @@ function Grass({ count = 16000 }: { count?: number }) {
       const Y = islandTopHeight(X, Z);
       if (Y === null) continue;
       // keep the channel (water + its walls) clear of grass; grass tops the banks
-      if (Math.abs(Z) < 0.3 && X > -0.95) continue;
+      if (Math.abs(Z) < 0.5 && X > -0.95) continue;
       // leave a clearing where the figure sits
       if (Math.hypot(X - CODER_POS[0], Z - CODER_POS[2]) < 0.7) continue;
       dummy.position.set(X, Y - 0.02, Z);
