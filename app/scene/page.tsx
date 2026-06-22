@@ -356,29 +356,35 @@ const WATER_FRAG = /* glsl */ `
   void main(){
     vec2 uv = vUv;            // uv.y: 1 = top/lip, 0 = bottom
     float t = uTime;
-    float fall = uv.y - t * 0.9;   // scroll the pattern downward over time
+    float fall = uv.y - t * 0.95;   // scroll the pattern downward over time
 
-    // thin fast vertical streaks + a slower broad body
-    float streaks = fbm(vec2(uv.x * 34.0, fall * 3.0 * 2.0));
-    float body    = fbm(vec2(uv.x * 9.0,  fall * 5.0));
-    float water   = body * 0.5 + streaks * 0.65;
+    // domain-warp the columns so they curve and churn instead of being straight lines
+    float warp = fbm(vec2(uv.x * 4.0, fall * 1.6)) - 0.5;
+    float sx = uv.x + warp * 0.28;
 
-    vec3 deep = vec3(0.50, 0.74, 0.93);
+    float streaks = fbm(vec2(sx * 25.0, fall * 2.2));
+    float body    = fbm(vec2(sx * 7.0,  fall * 3.4));
+    float foamN   = fbm(vec2(uv.x * 11.0 + 3.0, fall * 5.0));
+    float water   = body * 0.45 + streaks * 0.55;
+
+    vec3 deep = vec3(0.45, 0.69, 0.89);
     vec3 foam = vec3(1.0);
     vec3 col = mix(deep, foam, clamp(water, 0.0, 1.0));
 
-    // bright foam at the lip (top) and where it slams into the base (bottom)
-    float lip  = smoothstep(0.84, 1.0, uv.y);
-    float base = smoothstep(0.16, 0.0, uv.y);
+    // turbulent foam patches + bright lip and impact base
+    col = mix(col, foam, smoothstep(0.55, 0.9, foamN) * 0.5);
+    float lip  = smoothstep(0.85, 1.0, uv.y);
+    float base = smoothstep(0.18, 0.0, uv.y);
     col = mix(col, foam, max(lip, base) * 0.85);
 
-    // vertical banding so light shows through gaps -> reads as volume, not a sheet
-    float bands = smoothstep(0.28, 0.72, streaks);
-    float edge = smoothstep(0.0, 0.10, uv.x) * smoothstep(1.0, 0.90, uv.x);
-    float alpha = edge * (0.45 + 0.5 * water);
-    alpha = mix(alpha * 0.55, alpha, bands);          // see-through gaps between streaks
-    alpha = max(alpha, base * edge * 0.8);            // keep the impact foam solid
-    gl_FragColor = vec4(col, clamp(alpha, 0.0, 0.96));
+    // soft feathered edges; broken alpha (streaks + foam) reads as volume, not paper
+    float edge = smoothstep(0.0, 0.18, uv.x) * smoothstep(1.0, 0.82, uv.x);
+    float bands = smoothstep(0.24, 0.70, streaks);
+    float alpha = edge * (0.30 + 0.5 * water);
+    alpha = mix(alpha * 0.4, alpha, bands);
+    alpha = max(alpha, base * edge * 0.7);
+    alpha = max(alpha, smoothstep(0.6, 0.95, foamN) * edge * 0.55);
+    gl_FragColor = vec4(col, clamp(alpha, 0.0, 0.9));
   }
 `;
 
@@ -584,8 +590,9 @@ function WaterPool({
 }
 
 /* ---------------- Stream: a ribbon of flowing water hugging the channel ---------------- */
-const STREAM_X0 = -0.25;
+const STREAM_X0 = -0.65; // starts at the upper fall's landing pool
 const STREAM_X1 = 3.32;
+const STREAM_HALFW = 0.46; // half-width, matched to the waterfalls
 function buildStreamGeometry() {
   const N = 48;
   const g = new THREE.PlaneGeometry(1, 1, N, 1);
@@ -594,7 +601,7 @@ function buildStreamGeometry() {
     const u = pos.getX(i) + 0.5; // 0..1 along the flow
     const v = pos.getY(i) + 0.5; // 0..1 across
     const x = STREAM_X0 + (STREAM_X1 - STREAM_X0) * u;
-    const halfW = 0.28 - 0.08 * u; // a touch wider at the source
+    const halfW = STREAM_HALFW - 0.04 * u; // roughly the waterfall width
     const z = (v - 0.5) * 2 * halfW;
     const h = islandTopHeight(x, z);
     const Y = (h === null ? ISLE.lipY : h) + 0.05;
@@ -701,20 +708,21 @@ function HeroIsland({ material }: { material: THREE.Material }) {
           receiveShadow
         />
         {/* spring on top, the upper fall down its face, and the pool it lands in */}
-        <WaterPool position={[-1.6, 3.1, 0]} radius={0.4} />
-        <ShaderWaterfall position={[-0.66, 1.85, 0]} width={0.85} height={2.6} faceAxis="x" />
-        <WaterPool position={[-0.5, 0.5, 0]} radius={0.48} />
+        <WaterPool position={[-1.6, 3.1, 0]} radius={0.42} />
+        <ShaderWaterfall position={[-0.66, 1.85, 0]} width={0.92} height={2.6} faceAxis="x" />
+        <WaterPool position={[-0.5, 0.5, 0]} radius={0.55} />
 
         {/* the stream carries the water across the plateau to the rim */}
         <Stream />
 
         {/* CASCADE, tier 2: over the cliff and down into the cloud sea */}
-        <ShaderWaterfall position={[3.45, -4.1, 0]} width={1.1} height={7} faceAxis="x" />
+        <ShaderWaterfall position={[3.45, -4.1, 0]} width={0.95} height={7} faceAxis="x" />
 
-        {/* spray where the water lands / leaves */}
-        <Sparkles count={36} scale={[1.0, 1.2, 1.0]} position={[-0.5, 0.85, 0]} size={5} speed={reduced ? 0 : 0.8} opacity={0.65} color="#ffffff" />
-        <Sparkles count={30} scale={[1.0, 1.0, 1.0]} position={[3.4, -0.5, 0]} size={5} speed={reduced ? 0 : 0.9} opacity={0.6} color="#ffffff" />
-        <Sparkles count={60} scale={[1.8, 1.6, 1.4]} position={[3.5, -6.6, 0]} size={7} speed={reduced ? 0 : 1.1} opacity={0.5} color="#ffffff" />
+        {/* misty spray columns running the length of each fall, plus heavier mist at the feet */}
+        <Sparkles count={70} scale={[0.7, 2.6, 0.55]} position={[-0.66, 1.85, 0]} size={4} speed={reduced ? 0 : 0.7} opacity={0.6} color="#ffffff" />
+        <Sparkles count={42} scale={[1.1, 0.8, 1.0]} position={[-0.5, 0.7, 0]} size={6} speed={reduced ? 0 : 0.8} opacity={0.6} color="#ffffff" />
+        <Sparkles count={150} scale={[0.85, 7, 0.55]} position={[3.45, -4.1, 0]} size={5} speed={reduced ? 0 : 0.9} opacity={0.55} color="#ffffff" />
+        <Sparkles count={80} scale={[2.0, 1.8, 1.5]} position={[3.5, -6.7, 0]} size={8} speed={reduced ? 0 : 1.1} opacity={0.5} color="#ffffff" />
       </group>
     </Float>
   );
@@ -1044,10 +1052,8 @@ function Grass({ count = 16000 }: { count?: number }) {
       const X = Math.cos(a) * r, Z = Math.sin(a) * r;
       const Y = islandTopHeight(X, Z);
       if (Y === null) continue;
-      // keep the river channel (+X) clear of grass
-      const horiz = Math.max(1e-4, Math.hypot(X, Z));
-      const dx = X / horiz, dz = Z / horiz;
-      if (dx > 0.2 && Math.exp(-(dz * dz) / 0.05) > 0.5 && r > 1.2) continue;
+      // keep the whole watercourse clear: upper pool -> stream -> lip
+      if (Math.abs(Z) < 0.56 && X > -0.95) continue;
       // leave a clearing where the figure sits
       if (Math.hypot(X - CODER_POS[0], Z - CODER_POS[2]) < 0.7) continue;
       dummy.position.set(X, Y - 0.02, Z);
