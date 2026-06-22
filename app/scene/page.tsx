@@ -351,26 +351,31 @@ const WATER_FRAG = /* glsl */ `
   float fbm(vec2 p){ float v=0.0, a=0.5; for(int i=0;i<5;i++){ v+=a*noise(p); p*=2.0; a*=0.5; } return v; }
 
   void main(){
-    vec2 uv = vUv;
+    vec2 uv = vUv;            // uv.y: 1 = top/lip, 0 = bottom
     float t = uTime;
-    // streaks flowing downward (uv.y: 1 = top/lip, 0 = bottom)
-    float flow    = fbm(vec2(uv.x*6.0,  uv.y*9.0  + t*2.4));
-    float streaks = fbm(vec2(uv.x*22.0, uv.y*4.0  + t*3.6));
-    float water = flow*0.55 + streaks*0.55;
+    float fall = uv.y - t * 0.9;   // scroll the pattern downward over time
 
-    vec3 colA = vec3(0.74, 0.88, 1.0);
-    vec3 colB = vec3(0.96, 0.99, 1.0);
-    vec3 col = mix(colA, colB, water);
+    // thin fast vertical streaks + a slower broad body
+    float streaks = fbm(vec2(uv.x * 34.0, fall * 3.0 * 2.0));
+    float body    = fbm(vec2(uv.x * 9.0,  fall * 5.0));
+    float water   = body * 0.5 + streaks * 0.65;
 
-    // foam at the lip and a glow throughout
-    float lipFoam = smoothstep(0.82, 1.0, uv.y);
-    col = mix(col, vec3(1.0), lipFoam*0.85);
+    vec3 deep = vec3(0.50, 0.74, 0.93);
+    vec3 foam = vec3(1.0);
+    vec3 col = mix(deep, foam, clamp(water, 0.0, 1.0));
 
-    // horizontal edge falloff + bottom fade into mist
-    float edge = smoothstep(0.0,0.16,uv.x) * smoothstep(1.0,0.84,uv.x);
-    float alpha = (0.32 + water*0.7) * edge * smoothstep(0.0,0.22,uv.y);
+    // bright foam at the lip (top) and where it slams into the base (bottom)
+    float lip  = smoothstep(0.84, 1.0, uv.y);
+    float base = smoothstep(0.16, 0.0, uv.y);
+    col = mix(col, foam, max(lip, base) * 0.85);
 
-    gl_FragColor = vec4(col, alpha);
+    // vertical banding so light shows through gaps -> reads as volume, not a sheet
+    float bands = smoothstep(0.28, 0.72, streaks);
+    float edge = smoothstep(0.0, 0.10, uv.x) * smoothstep(1.0, 0.90, uv.x);
+    float alpha = edge * (0.45 + 0.5 * water);
+    alpha = mix(alpha * 0.55, alpha, bands);          // see-through gaps between streaks
+    alpha = max(alpha, base * edge * 0.8);            // keep the impact foam solid
+    gl_FragColor = vec4(col, clamp(alpha, 0.0, 0.96));
   }
 `;
 
@@ -390,8 +395,9 @@ function ShaderWaterfall({
   useFrame((state) => {
     if (!reduced) uniforms.uTime.value = state.clock.elapsedTime;
   });
-  // a shallow V facing outward off the cliff, or a perpendicular cross for free-standing falls
-  const angles = faceAxis === "x" ? [Math.PI / 2 - 0.3, Math.PI / 2 + 0.3] : [0, Math.PI / 2];
+  // a shallow fan facing outward off the cliff, or a perpendicular cross for free-standing falls
+  const angles =
+    faceAxis === "x" ? [Math.PI / 2 - 0.34, Math.PI / 2, Math.PI / 2 + 0.34] : [0, Math.PI / 2];
   return (
     <group position={position}>
       {angles.map((ry, i) => (
@@ -701,6 +707,11 @@ function HeroIsland({ material }: { material: THREE.Material }) {
 
         {/* CASCADE, tier 2: over the cliff and down into the cloud sea */}
         <ShaderWaterfall position={[3.45, -4.1, 0]} width={1.1} height={7} faceAxis="x" />
+
+        {/* spray where the water lands / leaves */}
+        <Sparkles count={36} scale={[1.0, 1.2, 1.0]} position={[-0.5, 0.85, 0]} size={5} speed={reduced ? 0 : 0.8} opacity={0.65} color="#ffffff" />
+        <Sparkles count={30} scale={[1.0, 1.0, 1.0]} position={[3.4, -0.5, 0]} size={5} speed={reduced ? 0 : 0.9} opacity={0.6} color="#ffffff" />
+        <Sparkles count={60} scale={[1.8, 1.6, 1.4]} position={[3.5, -6.6, 0]} size={7} speed={reduced ? 0 : 1.1} opacity={0.5} color="#ffffff" />
       </group>
     </Float>
   );
