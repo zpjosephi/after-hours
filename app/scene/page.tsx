@@ -28,6 +28,7 @@ import {
   createContext,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -108,61 +109,70 @@ const ISLE = {
   lipY: -0.62, // height of the carved spout where water leaves the island
 };
 
+// shared noise so the grass scatters onto the exact terrain the geometry builds
+const ihash3 = (x: number, y: number, z: number) =>
+  ((Math.sin(x * 12.9898 + y * 78.233 + z * 37.719) * 43758.5453) % 1 + 1) % 1;
+const ifbm3 = (x: number, y: number, z: number) => {
+  let v = 0, a = 0.5, f = 1;
+  for (let o = 0; o < 4; o++) {
+    v += a * (ihash3(Math.floor(x * f), Math.floor(y * f), Math.floor(z * f)) - 0.5);
+    f *= 2; a *= 0.5;
+  }
+  return v;
+};
+const ihash2 = (x: number, z: number) =>
+  ((Math.sin(x * 127.1 + z * 311.7) * 43758.5453) % 1 + 1) % 1;
+const inoise2 = (x: number, z: number) => {
+  const xi = Math.floor(x), zi = Math.floor(z), xf = x - xi, zf = z - zi;
+  const u = xf * xf * (3 - 2 * xf), w = zf * zf * (3 - 2 * zf);
+  const a = ihash2(xi, zi), b = ihash2(xi + 1, zi), c = ihash2(xi, zi + 1), d = ihash2(xi + 1, zi + 1);
+  return a * (1 - u) * (1 - w) + b * u * (1 - w) + c * (1 - u) * w + d * u * w;
+};
+const ifbm2 = (x: number, z: number) => {
+  let v = 0, a = 0.5;
+  for (let o = 0; o < 4; o++) { v += a * inoise2(x, z); x *= 2; z *= 2; a *= 0.5; }
+  return v;
+};
+
+// height of the plateau surface at local (X,Z); null outside the rim
+function islandTopHeight(X: number, Z: number): number | null {
+  const { topR, plateauH, hillAmp } = ISLE;
+  const nx = X / topR, nz = Z / topR;
+  const rr = Math.hypot(nx, nz);
+  if (rr > 1) return null;
+  const ny = Math.sqrt(Math.max(0, 1 - rr * rr));
+  const rim = THREE.MathUtils.smoothstep(rr, 0.8, 1.0);
+  const hills = ifbm2(X * 0.38 + 10, Z * 0.38 + 10) * hillAmp * (1 - rim) * THREE.MathUtils.smoothstep(rr, 0.08, 0.42);
+  let Y = ny * plateauH + hills;
+  const horiz = Math.max(1e-5, Math.hypot(nx, nz));
+  const dx = nx / horiz, dz = nz / horiz;
+  const channel = Math.max(0, dx) * Math.exp(-(dz * dz) / 0.05);
+  Y -= channel * 0.62 * THREE.MathUtils.smoothstep(rr, 0.1, 1.0);
+  return Y;
+}
+
 function useIslandGeometry(detail: number) {
   return useMemo(() => {
     const geo = new THREE.IcosahedronGeometry(1, detail);
     const pos = geo.attributes.position;
     const p = new THREE.Vector3();
+    const { topR, depth } = ISLE;
 
-    const hash3 = (x: number, y: number, z: number) =>
-      ((Math.sin(x * 12.9898 + y * 78.233 + z * 37.719) * 43758.5453) % 1 + 1) % 1;
-    const fbm3 = (x: number, y: number, z: number) => {
-      let v = 0, a = 0.5, f = 1;
-      for (let o = 0; o < 4; o++) {
-        v += a * (hash3(Math.floor(x * f), Math.floor(y * f), Math.floor(z * f)) - 0.5);
-        f *= 2; a *= 0.5;
-      }
-      return v;
-    };
-    const hash2 = (x: number, z: number) =>
-      ((Math.sin(x * 127.1 + z * 311.7) * 43758.5453) % 1 + 1) % 1;
-    const noise2 = (x: number, z: number) => {
-      const xi = Math.floor(x), zi = Math.floor(z), xf = x - xi, zf = z - zi;
-      const u = xf * xf * (3 - 2 * xf), w = zf * zf * (3 - 2 * zf);
-      const a = hash2(xi, zi), b = hash2(xi + 1, zi), c = hash2(xi, zi + 1), d = hash2(xi + 1, zi + 1);
-      return a * (1 - u) * (1 - w) + b * u * (1 - w) + c * (1 - u) * w + d * u * w;
-    };
-    const fbm2 = (x: number, z: number) => {
-      let v = 0, a = 0.5;
-      for (let o = 0; o < 4; o++) { v += a * noise2(x, z); x *= 2; z *= 2; a *= 0.5; }
-      return v;
-    };
-
-    const { topR, plateauH, depth, hillAmp } = ISLE;
     for (let i = 0; i < pos.count; i++) {
       p.fromBufferAttribute(pos, i);
       const nx = p.x, ny = p.y, nz = p.z; // point on the unit sphere
-      const horiz = Math.hypot(nx, nz) || 1e-5;
       let X: number, Y: number, Z: number;
 
       if (ny >= 0) {
-        // TOP: flatten the upper hemisphere into a wide plateau with rolling hills
+        // TOP: flatten the upper hemisphere into a wide plateau (shared height fn)
         X = nx * topR;
         Z = nz * topR;
-        const rr = horiz; // 0 at centre, 1 at the rim
-        const rim = THREE.MathUtils.smoothstep(rr, 0.8, 1.0);
-        // hills fade out near the centre so there's a flat clearing for the tree
-        const hills = fbm2(X * 0.38 + 10, Z * 0.38 + 10) * hillAmp * (1 - rim) * THREE.MathUtils.smoothstep(rr, 0.08, 0.42);
-        Y = ny * plateauH + hills;
-        // carve a river channel running toward +X, cutting a notch at the rim
-        const dx = nx / horiz, dz = nz / horiz;
-        const channel = Math.max(0, dx) * Math.exp(-(dz * dz) / 0.05);
-        Y -= channel * 0.62 * THREE.MathUtils.smoothstep(rr, 0.1, 1.0);
+        Y = islandTopHeight(X, Z) ?? 0;
       } else {
         // UNDERSIDE: converge the lower hemisphere to a craggy point
         const t = -ny; // 0 at rim, 1 at the bottom point
         const conv = Math.pow(1 - t, 0.6);
-        const crag = fbm3(nx * 2.0, ny * 2.0, nz * 2.0);
+        const crag = ifbm3(nx * 2.0, ny * 2.0, nz * 2.0);
         X = nx * topR * conv + nx * crag * t;
         Z = nz * topR * conv + nz * crag * t;
         Y = -t * depth - crag * 0.6 * t;
@@ -498,6 +508,7 @@ function HeroIsland({ material }: { material: THREE.Material }) {
     >
       <group position={[0, 1.2, 0]}>
         <mesh geometry={geo} material={material} castShadow receiveShadow />
+        <Grass />
         {/* tree sits in the flat central clearing (~y 0.5) */}
         <Tree position={[-0.9, 0.45, 0.2]} scale={1.35} />
         <SeatedFigure position={[0.55, 0.5, 0.7]} scale={0.8} />
@@ -619,6 +630,97 @@ function Birds() {
       ))}
     </group>
   );
+}
+
+/* ---------------- Instanced grass: thousands of wind-swept blades ---------------- */
+function Grass({ count = 16000 }: { count?: number }) {
+  const reduced = useContext(ReducedMotion);
+  const ref = useRef<THREE.InstancedMesh>(null);
+  const uniforms = useMemo(() => ({ uTime: { value: 0 } }), []);
+
+  const geo = useMemo(() => {
+    const h = 0.32, w = 0.04, seg = 4;
+    const g = new THREE.PlaneGeometry(w, h, 1, seg);
+    g.translate(0, h / 2, 0); // pivot at the base
+    const pos = g.attributes.position;
+    for (let i = 0; i < pos.count; i++) {
+      const t = pos.getY(i) / h;
+      pos.setX(i, pos.getX(i) * (1 - t * 0.9)); // taper to a tip
+    }
+    g.computeVertexNormals();
+    return g;
+  }, []);
+
+  const mat = useMemo(() => {
+    const m = new THREE.MeshStandardMaterial({ side: THREE.DoubleSide, roughness: 0.9, metalness: 0 });
+    m.onBeforeCompile = (shader) => {
+      shader.uniforms.uTime = uniforms.uTime;
+      shader.vertexShader = shader.vertexShader
+        .replace("#include <common>", "#include <common>\nuniform float uTime;\nvarying float vBladeH;")
+        .replace(
+          "#include <begin_vertex>",
+          `#include <begin_vertex>
+           float bh = uv.y; vBladeH = bh;
+           #ifdef USE_INSTANCING
+             vec3 ip = vec3(instanceMatrix[3][0], instanceMatrix[3][1], instanceMatrix[3][2]);
+           #else
+             vec3 ip = vec3(0.0);
+           #endif
+           float ph = ip.x * 0.8 + ip.z * 0.8;
+           float sway = sin(uTime * 1.6 + ph) * 0.13 + sin(uTime * 3.3 + ph * 1.7) * 0.05;
+           transformed.x += sway * bh * bh;
+           transformed.z += sway * 0.4 * bh * bh;`
+        );
+      shader.fragmentShader = shader.fragmentShader
+        .replace("#include <common>", "#include <common>\nvarying float vBladeH;")
+        .replace(
+          "#include <map_fragment>",
+          `vec3 baseC = vec3(0.09, 0.19, 0.04);
+           vec3 tipC  = vec3(0.43, 0.52, 0.17);
+           diffuseColor.rgb *= mix(baseC, tipC, vBladeH);`
+        );
+    };
+    m.customProgramCacheKey = () => "grass-wind-v1";
+    return m;
+  }, [uniforms]);
+
+  useLayoutEffect(() => {
+    const mesh = ref.current;
+    if (!mesh) return;
+    const dummy = new THREE.Object3D();
+    const col = new THREE.Color();
+    let n = 0, tries = 0;
+    while (n < count && tries < count * 5) {
+      tries++;
+      const r = Math.sqrt(Math.random()) * ISLE.topR * 0.96;
+      const a = Math.random() * Math.PI * 2;
+      const X = Math.cos(a) * r, Z = Math.sin(a) * r;
+      const Y = islandTopHeight(X, Z);
+      if (Y === null) continue;
+      // keep the river channel (+X) clear of grass
+      const horiz = Math.max(1e-4, Math.hypot(X, Z));
+      const dx = X / horiz, dz = Z / horiz;
+      if (dx > 0.2 && Math.exp(-(dz * dz) / 0.05) > 0.5 && r > 1.2) continue;
+      dummy.position.set(X, Y - 0.02, Z);
+      dummy.rotation.set((Math.random() - 0.5) * 0.2, Math.random() * Math.PI, (Math.random() - 0.5) * 0.2);
+      dummy.scale.set(0.8 + Math.random() * 0.5, 0.7 + Math.random() * 0.7, 1);
+      dummy.updateMatrix();
+      mesh.setMatrixAt(n, dummy.matrix);
+      const v = 0.8 + Math.random() * 0.4;
+      col.setRGB(v, v, v * 0.95);
+      mesh.setColorAt(n, col);
+      n++;
+    }
+    mesh.count = n;
+    mesh.instanceMatrix.needsUpdate = true;
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+  }, [count]);
+
+  useFrame((state) => {
+    if (!reduced) uniforms.uTime.value = state.clock.elapsedTime;
+  });
+
+  return <instancedMesh ref={ref} args={[geo, mat, count]} frustumCulled={false} receiveShadow />;
 }
 
 /* ---------------- Scene ---------------- */
