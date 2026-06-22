@@ -9,7 +9,7 @@ import {
   Sky,
   Sparkles,
   Environment,
-  Lightformer,
+  SoftShadows,
 } from "@react-three/drei";
 import {
   EffectComposer,
@@ -84,7 +84,7 @@ function Island({
   return (
     <Float speed={floatSpeed} rotationIntensity={0.1} floatIntensity={0.8} floatingRange={[-0.3, 0.3]}>
       <mesh geometry={geo} position={position} scale={[scale, scale * 1.45, scale]} castShadow receiveShadow>
-        <meshStandardMaterial vertexColors flatShading roughness={1} metalness={0} />
+        <meshStandardMaterial vertexColors flatShading roughness={1} metalness={0} envMapIntensity={0.55} />
       </mesh>
     </Float>
   );
@@ -174,15 +174,14 @@ function Scene() {
 
   return (
     <>
+      {/* contact-soft penumbra so shadows read as real, not stamped */}
+      <SoftShadows size={14} samples={12} focus={0.6} />
+
       <fog attach="fog" args={["#cdac8a", 13, 42]} />
       <Sky sunPosition={[12, 1.2, -8]} turbidity={11} rayleigh={1.0} mieCoefficient={0.02} mieDirectionalG={0.96} />
 
-      {/* PBR lighting environment baked once from lightformers (no network) */}
-      <Environment resolution={256} frames={1}>
-        <Lightformer intensity={3} color="#ffd9a8" position={[10, 5, -8]} scale={[12, 12, 1]} />
-        <Lightformer intensity={0.7} color="#8fb0d0" position={[-12, 2, 6]} scale={[12, 12, 1]} />
-        <Lightformer intensity={0.5} color="#ffffff" position={[0, -8, 0]} rotation={[Math.PI / 2, 0, 0]} scale={[20, 20, 1]} />
-      </Environment>
+      {/* real captured HDRI (Poly Haven, golden hour) drives ambient + reflections; sky stays procedural */}
+      <Environment files="/hdri/venice_sunset_1k.hdr" environmentIntensity={0.85} />
 
       {/* sun disc — both a visible light source and the god-ray origin */}
       <mesh ref={setSun} position={[34, 3.4, -22]}>
@@ -190,9 +189,17 @@ function Scene() {
         <meshBasicMaterial color="#fff1cf" toneMapped={false} />
       </mesh>
 
-      <ambientLight intensity={0.28} />
-      <hemisphereLight args={["#ffe6c2", "#3a4763", 0.45]} />
-      <directionalLight position={[10, 3, -6]} intensity={3.2} color="#ffc98a" castShadow shadow-mapSize={[1024, 1024]} />
+      {/* HDRI now carries the fill, so direct lights only add the warm key + crisp shadow */}
+      <ambientLight intensity={0.12} />
+      <hemisphereLight args={["#ffe6c2", "#3a4763", 0.22]} />
+      <directionalLight
+        position={[10, 3, -6]}
+        intensity={2.6}
+        color="#ffc98a"
+        castShadow
+        shadow-mapSize={[2048, 2048]}
+        shadow-bias={-0.0004}
+      />
 
       {/* floating islands */}
       <Island position={[0, 0.5, 0]} scale={1.2} floatSpeed={1.1} />
@@ -246,7 +253,12 @@ function Scene() {
 export default function ScenePage() {
   return (
     <main className="relative h-screen w-full bg-[#14213a]">
-      <Canvas shadows dpr={[1, 2]} camera={{ position: [7, 2.5, 11], fov: 42 }} gl={{ antialias: true, toneMappingExposure: 0.52 }}>
+      <Canvas
+        shadows
+        dpr={[1, 2]}
+        camera={{ position: [7, 2.5, 11], fov: 42 }}
+        gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 0.62 }}
+      >
         <Suspense fallback={null}>
           <Scene />
         </Suspense>
