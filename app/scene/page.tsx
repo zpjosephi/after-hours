@@ -153,10 +153,11 @@ function islandTopHeight(X: number, Z: number): number | null {
   let Y = ny * plateauH + hills;
   const horiz = Math.max(1e-5, Math.hypot(nx, nz));
   const dx = nx / horiz, dz = nz / horiz;
-  // a defined trench (riverbed) toward +X: narrower and deeper, with banks, so the
-  // stream sits recessed in it instead of lying flat like a sheet of paper
-  const channel = Math.max(0, dx) * Math.exp(-(dz * dz) / 0.03);
-  Y -= channel * 0.6 * THREE.MathUtils.smoothstep(rr, 0.12, 1.0);
+  // a defined trench (riverbed) toward +X: a flat bottom with steep walls (like a
+  // ditch), so the stream sits recessed and the banks read as a clear channel
+  const adz = Math.abs(dz);
+  const channel = Math.max(0, dx) * (1 - THREE.MathUtils.smoothstep(adz, 0.05, 0.13));
+  Y -= channel * 0.72 * THREE.MathUtils.smoothstep(rr, 0.12, 1.0);
   return Y;
 }
 
@@ -189,9 +190,9 @@ function useIslandGeometry(detail: number) {
         // stream and show a brown ledge at the brink (fades a short way down)
         const horizU = Math.hypot(nx, nz) || 1e-5;
         const dxu = Math.max(0, nx / horizU);
-        const dzu = nz / horizU;
-        const notch = dxu * Math.exp(-(dzu * dzu) / 0.05) * Math.max(0, 1 - t * 2.5);
-        Y -= notch * 0.7;
+        const adzu = Math.abs(nz / horizU);
+        const notch = dxu * (1 - THREE.MathUtils.smoothstep(adzu, 0.05, 0.13)) * Math.max(0, 1 - t * 2.5);
+        Y -= notch * 0.75;
       }
       pos.setXYZ(i, X, Y, Z);
     }
@@ -602,7 +603,7 @@ function WaterPool({
 /* ---------------- Stream: a ribbon of flowing water hugging the channel ---------------- */
 const STREAM_X0 = -0.65; // starts at the upper fall's landing pool
 const STREAM_X1 = 3.35; // ends at the rim
-const STREAM_HALFW = 0.32; // narrower so it sits inside the trench, banks showing
+const STREAM_HALFW = 0.24; // sits in the flat channel bottom, walls rising on each side
 function buildStreamGeometry() {
   const N = 48;
   const g = new THREE.PlaneGeometry(1, 1, N, 1);
@@ -729,9 +730,9 @@ function HeroIsland({ material }: { material: THREE.Material }) {
         <Stream />
 
         {/* CASCADE, tier 2: pours from the trench mouth down into the cloud sea */}
-        <ShaderWaterfall position={[3.4, -3.75, 0]} width={0.74} height={7.5} faceAxis="x" />
+        <ShaderWaterfall position={[3.4, -3.75, 0]} width={0.5} height={7.5} faceAxis="x" />
         {/* mist veil over the brink to soften the rocky lip, like real spray */}
-        <Sparkles count={80} scale={[0.9, 0.7, 0.9]} position={[3.35, -0.5, 0]} size={7} speed={reduced ? 0 : 0.7} opacity={0.7} color="#ffffff" />
+        <Sparkles count={70} scale={[0.7, 0.7, 0.8]} position={[3.35, -0.55, 0]} size={6} speed={reduced ? 0 : 0.7} opacity={0.7} color="#ffffff" />
 
         {/* misty spray columns running the length of each fall, plus heavier mist at the feet */}
         <Sparkles count={70} scale={[0.7, 2.6, 0.55]} position={[-0.66, 1.85, 0]} size={4} speed={reduced ? 0 : 0.7} opacity={0.6} color="#ffffff" />
@@ -1240,8 +1241,8 @@ function Grass({ count = 16000 }: { count?: number }) {
       const X = Math.cos(a) * r, Z = Math.sin(a) * r;
       const Y = islandTopHeight(X, Z);
       if (Y === null) continue;
-      // keep the whole watercourse clear: upper pool -> stream -> lip
-      if (Math.abs(Z) < 0.56 && X > -0.95) continue;
+      // keep the channel (water + its walls) clear of grass; grass tops the banks
+      if (Math.abs(Z) < 0.42 && X > -0.95) continue;
       // leave a clearing where the figure sits
       if (Math.hypot(X - CODER_POS[0], Z - CODER_POS[2]) < 0.7) continue;
       dummy.position.set(X, Y - 0.02, Z);
