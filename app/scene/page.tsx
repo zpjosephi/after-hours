@@ -678,7 +678,8 @@ function HeroIsland({ material }: { material: THREE.Material }) {
         <Grass />
         {/* real tree, off to the back away from the water */}
         <RealTree position={[-0.2, 0.42, -1.7]} scale={1.0} />
-        <SeatedFigure position={[2.45, 0.3, 1.15]} scale={0.8} />
+        {/* angler perched at the rim, fishing into the clouds */}
+        <Angler position={[2.5, 0.32, 1.5]} scale={0.85} rotation={-0.5} />
         <Roots material={barkMat} />
 
         {/* CASCADE, tier 1: a tall rock outcrop the upper fall pours from */}
@@ -762,6 +763,61 @@ function SeatedFigure({
       {/* an arm resting on the knee */}
       <mesh material={mat} position={[0.13, 0.3, 0.18]} rotation={[0.9, 0, -0.2]} castShadow>
         <capsuleGeometry args={[0.05, 0.24, 4, 8]} />
+      </mesh>
+    </group>
+  );
+}
+
+/* ---------------- Angler: a seated figure fishing over the edge ---------------- */
+function Angler({
+  position,
+  scale = 1,
+  rotation = 0,
+}: {
+  position: [number, number, number];
+  scale?: number;
+  rotation?: number;
+}) {
+  const mat = useMemo(
+    () => new THREE.MeshStandardMaterial({ color: "#262530", roughness: 0.95, metalness: 0 }),
+    []
+  );
+  const rodMat = useMemo(
+    () => new THREE.MeshStandardMaterial({ color: "#3a2c1c", roughness: 0.8, metalness: 0 }),
+    []
+  );
+  return (
+    <group position={position} scale={scale} rotation={[0, rotation, 0]}>
+      {/* hips */}
+      <mesh material={mat} position={[0, 0.16, 0]} castShadow>
+        <boxGeometry args={[0.22, 0.16, 0.26]} />
+      </mesh>
+      {/* torso leaning forward over the edge */}
+      <mesh material={mat} position={[0.03, 0.4, 0]} rotation={[0, 0, -0.28]} castShadow>
+        <capsuleGeometry args={[0.11, 0.24, 4, 8]} />
+      </mesh>
+      {/* head */}
+      <mesh material={mat} position={[0.14, 0.63, 0]} castShadow>
+        <sphereGeometry args={[0.095, 16, 16]} />
+      </mesh>
+      {/* legs dangling forward over the edge */}
+      <mesh material={mat} position={[0.24, 0.0, 0.09]} rotation={[0, 0, -1.2]} castShadow>
+        <capsuleGeometry args={[0.06, 0.34, 4, 8]} />
+      </mesh>
+      <mesh material={mat} position={[0.24, 0.0, -0.09]} rotation={[0, 0, -1.2]} castShadow>
+        <capsuleGeometry args={[0.06, 0.34, 4, 8]} />
+      </mesh>
+      {/* arm reaching to the rod */}
+      <mesh material={mat} position={[0.22, 0.42, 0.1]} rotation={[0, 0, -1.05]} castShadow>
+        <capsuleGeometry args={[0.045, 0.26, 4, 8]} />
+      </mesh>
+      {/* the rod, angled up and out */}
+      <mesh material={rodMat} position={[0.55, 0.64, 0.1]} rotation={[0, 0, -0.5]} castShadow>
+        <cylinderGeometry args={[0.012, 0.022, 1.35, 6]} />
+      </mesh>
+      {/* line dropping from the tip down over the edge */}
+      <mesh material={mat} position={[0.92, -0.2, 0.1]}>
+        <cylinderGeometry args={[0.004, 0.004, 2.7, 4]} />
       </mesh>
     </group>
   );
