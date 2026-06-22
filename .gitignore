@@ -43,3 +43,7 @@ next-env.d.ts
 # scratch / asset sources
 .tmp_*.png
 ph_*.json
+
+# raw model sources (converted to .glb)
+*.fbx
+*.fbm/

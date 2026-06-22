@@ -11,6 +11,7 @@ import {
   Environment,
   useTexture,
   useGLTF,
+  useAnimations,
   PerformanceMonitor,
   Loader,
 } from "@react-three/drei";
@@ -694,8 +695,9 @@ function HeroIsland({ material }: { material: THREE.Material }) {
         <Grass />
         {/* real tree, off to the back away from the water */}
         <RealTree position={[-0.2, 0.42, -1.7]} scale={1.0} />
-        {/* a coder working at the rim, lit by the laptop glow */}
-        <Coder position={CODER_POS} scale={0.92} rotation={-2.3} />
+        {/* a real person working at the rim, laptop in their lap */}
+        <Person position={CODER_POS} scale={1.0} rotation={1.0} />
+        <Laptop position={[2.52, 0.82, 1.46]} scale={0.8} rotation={-2.14} />
         <Roots material={barkMat} />
 
         {/* CASCADE, tier 1: a tall rock outcrop the upper fall pours from */}
@@ -841,6 +843,89 @@ function Angler({
       <mesh material={mat} position={[0.92, -0.2, 0.1]}>
         <cylinderGeometry args={[0.004, 0.004, 2.7, 4]} />
       </mesh>
+    </group>
+  );
+}
+
+/* ---------------- Real rigged person (Mixamo FBX), ping-pong looped ---------------- */
+function Person({
+  position,
+  scale = 0.011,
+  rotation = 0,
+}: {
+  position: [number, number, number];
+  scale?: number;
+  rotation?: number;
+}) {
+  const reduced = useContext(ReducedMotion);
+  const { scene, animations } = useGLTF("/models/person.glb");
+  const { actions } = useAnimations(animations, scene);
+
+  useEffect(() => {
+    scene.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (m.isMesh) {
+        m.castShadow = true;
+        m.frustumCulled = false;
+      }
+    });
+  }, [scene]);
+
+  useEffect(() => {
+    const a = Object.values(actions)[0];
+    if (!a) return;
+    a.reset();
+    a.setLoop(THREE.LoopPingPong, Infinity); // forward then reverse, no jump on loop
+    a.play();
+    a.paused = reduced; // freeze for reduced-motion
+    return () => {
+      a.stop();
+    };
+  }, [actions, reduced]);
+
+  return <primitive object={scene} position={position} scale={scale} rotation={[0, rotation, 0]} />;
+}
+useGLTF.preload("/models/person.glb");
+
+/* ---------------- Laptop prop with a glowing screen ---------------- */
+function Laptop({
+  position,
+  scale = 1,
+  rotation = 0,
+}: {
+  position: [number, number, number];
+  scale?: number;
+  rotation?: number;
+}) {
+  const metal = useMemo(
+    () => new THREE.MeshStandardMaterial({ color: "#3a3d44", roughness: 0.45, metalness: 0.6 }),
+    []
+  );
+  const screen = useMemo(
+    () =>
+      new THREE.MeshStandardMaterial({
+        color: "#0a0e16",
+        emissive: new THREE.Color("#cfe0ff"),
+        emissiveIntensity: 2.2,
+        roughness: 0.4,
+      }),
+    []
+  );
+  return (
+    <group position={position} scale={scale} rotation={[0, rotation, 0]}>
+      {/* keyboard base */}
+      <mesh material={metal} castShadow>
+        <boxGeometry args={[0.26, 0.02, 0.2]} />
+      </mesh>
+      {/* screen lid, tilted up toward the user (+Z) */}
+      <mesh material={metal} position={[0, 0.095, -0.095]} rotation={[-0.42, 0, 0]} castShadow>
+        <boxGeometry args={[0.26, 0.18, 0.02]} />
+      </mesh>
+      {/* lit screen face toward the user */}
+      <mesh material={screen} position={[0, 0.095, -0.083]} rotation={[-0.42, 0, 0]}>
+        <planeGeometry args={[0.22, 0.15]} />
+      </mesh>
+      <pointLight position={[0, 0.14, 0.04]} color="#bcd2f5" intensity={1.8} distance={1.5} decay={2} />
     </group>
   );
 }
