@@ -9,7 +9,7 @@ import {
   Sky,
   Sparkles,
   Environment,
-  SoftShadows,
+  useTexture,
 } from "@react-three/drei";
 import {
   EffectComposer,
@@ -71,21 +71,125 @@ function useRockGeometry(radius: number, detail: number, amp: number) {
   }, [radius, detail, amp]);
 }
 
+/* ---------------- Triplanar PBR rock material (no UVs needed) ----------------
+   World-space triplanar sampling: project the texture down all three axes and
+   blend by the surface normal, so a procedural blob gets real rock detail with
+   zero stretching. Vertex colors stay as a tint so the grassy top survives.   */
+function useRockMaterial() {
+  const maps = useTexture({
+    map: "/tex/rock/rock_06_diff_1k.jpg",
+    normalMap: "/tex/rock/rock_06_nor_gl_1k.jpg",
+    roughnessMap: "/tex/rock/rock_06_rough_1k.jpg",
+    aoMap: "/tex/rock/rock_06_ao_1k.jpg",
+  });
+
+  return useMemo(() => {
+    const { map, normalMap, roughnessMap, aoMap } = maps;
+    [map, normalMap, roughnessMap, aoMap].forEach((t) => {
+      t.wrapS = t.wrapT = THREE.RepeatWrapping;
+      t.colorSpace = THREE.NoColorSpace; // we linearize the albedo manually in-shader
+    });
+
+    const mat = new THREE.MeshStandardMaterial({
+      vertexColors: true,
+      roughness: 1,
+      metalness: 0,
+      envMapIntensity: 0.55,
+    });
+
+    const uScale = { value: 0.55 };
+    const uNormStr = { value: 0.7 };
+
+    mat.onBeforeCompile = (shader) => {
+      shader.uniforms.uScale = uScale;
+      shader.uniforms.uNormStr = uNormStr;
+      shader.uniforms.tDiff = { value: map };
+      shader.uniforms.tNor = { value: normalMap };
+      shader.uniforms.tRough = { value: roughnessMap };
+      shader.uniforms.tAO = { value: aoMap };
+
+      shader.vertexShader = shader.vertexShader
+        .replace(
+          "#include <common>",
+          `#include <common>
+           varying vec3 vWPos;
+           varying vec3 vWNor;`
+        )
+        .replace(
+          "#include <worldpos_vertex>",
+          `#include <worldpos_vertex>
+           vWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;
+           vWNor = normalize(mat3(modelMatrix) * objectNormal);`
+        );
+
+      shader.fragmentShader = shader.fragmentShader
+        .replace(
+          "#include <common>",
+          `#include <common>
+           varying vec3 vWPos;
+           varying vec3 vWNor;
+           uniform float uScale;
+           uniform float uNormStr;
+           uniform sampler2D tDiff;
+           uniform sampler2D tNor;
+           uniform sampler2D tRough;
+           uniform sampler2D tAO;
+           vec3 triWeights(vec3 n){ vec3 b = pow(abs(n), vec3(4.0)); return b / (b.x + b.y + b.z + 1e-5); }
+           vec4 triSample(sampler2D s, vec3 p, vec3 w){
+             return texture2D(s, p.yz) * w.x + texture2D(s, p.zx) * w.y + texture2D(s, p.xy) * w.z;
+           }`
+        )
+        .replace(
+          "#include <map_fragment>",
+          `vec3 triW = triWeights(vWNor);
+           vec3 triP = vWPos * uScale;
+           vec3 rockAlb = triSample(tDiff, triP, triW).rgb;
+           rockAlb = pow(rockAlb, vec3(2.2)); // sRGB -> linear
+           diffuseColor.rgb *= rockAlb;`
+        )
+        .replace(
+          "#include <roughnessmap_fragment>",
+          `float roughnessFactor = roughness;
+           { vec3 wR = triWeights(vWNor); float r = triSample(tRough, vWPos * uScale, wR).g; roughnessFactor *= r; }`
+        )
+        .replace(
+          "#include <normal_fragment_maps>",
+          `vec3 wN = triWeights(vWNor);
+           vec3 nTex = triSample(tNor, vWPos * uScale, wN).xyz * 2.0 - 1.0;
+           normal = normalize(vWNor + nTex * uNormStr);`
+        )
+        .replace(
+          "#include <aomap_fragment>",
+          `{ vec3 wA = triWeights(vWNor); float ao = triSample(tAO, vWPos * uScale, wA).r; reflectedLight.indirectDiffuse *= ao; }`
+        );
+    };
+    mat.customProgramCacheKey = () => "triplanar-rock-v1";
+    return mat;
+  }, [maps]);
+}
+
 function Island({
   position,
   scale = 1,
   floatSpeed = 1,
+  material,
 }: {
   position: [number, number, number];
   scale?: number;
   floatSpeed?: number;
+  material: THREE.Material;
 }) {
   const geo = useRockGeometry(1.1, 4, 0.2);
   return (
     <Float speed={floatSpeed} rotationIntensity={0.1} floatIntensity={0.8} floatingRange={[-0.3, 0.3]}>
-      <mesh geometry={geo} position={position} scale={[scale, scale * 1.45, scale]} castShadow receiveShadow>
-        <meshStandardMaterial vertexColors flatShading roughness={1} metalness={0} envMapIntensity={0.55} />
-      </mesh>
+      <mesh
+        geometry={geo}
+        material={material}
+        position={position}
+        scale={[scale, scale * 1.45, scale]}
+        castShadow
+        receiveShadow
+      />
     </Float>
   );
 }
@@ -171,12 +275,10 @@ function ShaderWaterfall({
 /* ---------------- Scene ---------------- */
 function Scene() {
   const [sun, setSun] = useState<THREE.Mesh | null>(null);
+  const rockMat = useRockMaterial();
 
   return (
     <>
-      {/* contact-soft penumbra so shadows read as real, not stamped */}
-      <SoftShadows size={14} samples={12} focus={0.6} />
-
       <fog attach="fog" args={["#cdac8a", 13, 42]} />
       <Sky sunPosition={[12, 1.2, -8]} turbidity={11} rayleigh={1.0} mieCoefficient={0.02} mieDirectionalG={0.96} />
 
@@ -199,15 +301,16 @@ function Scene() {
         castShadow
         shadow-mapSize={[2048, 2048]}
         shadow-bias={-0.0004}
+        shadow-radius={5}
       />
 
       {/* floating islands */}
-      <Island position={[0, 0.5, 0]} scale={1.2} floatSpeed={1.1} />
-      <Island position={[-4.5, 2.6, -3]} scale={0.85} floatSpeed={0.8} />
-      <Island position={[4.2, -1.4, -2]} scale={0.95} floatSpeed={1.3} />
-      <Island position={[-2, -2.6, 1.5]} scale={0.7} floatSpeed={1.5} />
-      <Island position={[2.5, 4.2, -6]} scale={0.6} floatSpeed={0.7} />
-      <Island position={[-6.5, -0.5, -7]} scale={0.5} floatSpeed={0.9} />
+      <Island position={[0, 0.5, 0]} scale={1.2} floatSpeed={1.1} material={rockMat} />
+      <Island position={[-4.5, 2.6, -3]} scale={0.85} floatSpeed={0.8} material={rockMat} />
+      <Island position={[4.2, -1.4, -2]} scale={0.95} floatSpeed={1.3} material={rockMat} />
+      <Island position={[-2, -2.6, 1.5]} scale={0.7} floatSpeed={1.5} material={rockMat} />
+      <Island position={[2.5, 4.2, -6]} scale={0.6} floatSpeed={0.7} material={rockMat} />
+      <Island position={[-6.5, -0.5, -7]} scale={0.5} floatSpeed={0.9} material={rockMat} />
 
       {/* shader waterfalls into the cloud sea */}
       <ShaderWaterfall position={[0.2, -3.3, 0.4]} width={1.3} height={6} />
@@ -254,7 +357,7 @@ export default function ScenePage() {
   return (
     <main className="relative h-screen w-full bg-[#14213a]">
       <Canvas
-        shadows
+        shadows="percentage"
         dpr={[1, 2]}
         camera={{ position: [7, 2.5, 11], fov: 42 }}
         gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 0.62 }}
