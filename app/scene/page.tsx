@@ -386,13 +386,13 @@ const WATER_FRAG = /* glsl */ `
     col = mix(col, foam, max(lip, base) * 0.85);
 
     // soft feathered edges; broken alpha (streaks + foam) reads as volume, not paper
-    float edge = smoothstep(0.0, 0.18, uv.x) * smoothstep(1.0, 0.82, uv.x);
+    float edge = smoothstep(0.0, 0.14, uv.x) * smoothstep(1.0, 0.86, uv.x);
     float bands = smoothstep(0.24, 0.70, streaks);
-    float alpha = edge * (0.30 + 0.5 * water);
-    alpha = mix(alpha * 0.4, alpha, bands);
-    alpha = max(alpha, base * edge * 0.7);
-    alpha = max(alpha, smoothstep(0.6, 0.95, foamN) * edge * 0.55);
-    gl_FragColor = vec4(col, clamp(alpha, 0.0, 0.9));
+    float alpha = edge * (0.62 + 0.34 * water);   // more solid so the cliff doesn't show through
+    alpha = mix(alpha * 0.7, alpha, bands);
+    alpha = max(alpha, base * edge * 0.85);
+    alpha = max(alpha, smoothstep(0.6, 0.95, foamN) * edge * 0.6);
+    gl_FragColor = vec4(col, clamp(alpha, 0.0, 0.97));
   }
 `;
 
@@ -726,8 +726,9 @@ function HeroIsland({ material }: { material: THREE.Material }) {
         {/* the stream carries the water across the plateau to the rim */}
         <Stream />
 
-        {/* CASCADE, tier 2: over the cliff and down into the cloud sea */}
-        <ShaderWaterfall position={[3.42, -3.95, 0]} width={1.05} height={7.4} faceAxis="x" />
+        {/* CASCADE, tier 2: over the cliff and down into the cloud sea
+            (top raised above the stream so the sheet covers the brown lip) */}
+        <ShaderWaterfall position={[3.4, -3.7, 0]} width={1.1} height={7.9} faceAxis="x" />
         {/* mist veil over the brink to soften the rocky lip, like real spray */}
         <Sparkles count={90} scale={[1.4, 0.7, 1.1]} position={[3.35, -0.45, 0]} size={7} speed={reduced ? 0 : 0.7} opacity={0.7} color="#ffffff" />
 
