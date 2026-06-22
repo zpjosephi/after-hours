@@ -730,6 +730,9 @@ function HeroIsland({ material }: { material: THREE.Material }) {
         {/* the lower fall pours off the cliff into the cloud sea */}
         <ShaderWaterfall position={[3.4, -3.6, 0]} width={0.66} height={7.3} faceAxis="x" />
 
+        {/* churning foam right at the brink, hides the stream/fall seam + reads as real */}
+        <Sparkles count={70} scale={[0.66, 0.22, 0.5]} position={[3.32, -0.08, 0]} size={9} speed={reduced ? 0 : 1.3} opacity={0.9} color="#ffffff" />
+
         {/* white spray at the falls (points, never transparent panels) */}
         <Sparkles count={55} scale={[0.7, 2.6, 0.5]} position={[-0.66, 1.85, 0]} size={4} speed={reduced ? 0 : 0.7} opacity={0.6} color="#ffffff" />
         <Sparkles count={130} scale={[0.8, 7, 0.5]} position={[3.45, -4.1, 0]} size={5} speed={reduced ? 0 : 0.9} opacity={0.55} color="#ffffff" />
