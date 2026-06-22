@@ -1337,7 +1337,7 @@ function Scene({ reduced }: { reduced: boolean }) {
       </Clouds>
 
       <OrbitControls
-        autoRotate={false}
+        autoRotate={!reduced}
         autoRotateSpeed={0.3}
         enablePan={false}
         enableZoom
@@ -1345,7 +1345,7 @@ function Scene({ reduced }: { reduced: boolean }) {
         maxPolarAngle={Math.PI / 1.95}
         minDistance={10}
         maxDistance={30}
-        target={[3.25, 0.15, 0.1]}
+        target={[0, -0.6, 0]}
       />
 
       {sun && (
@@ -1375,7 +1375,7 @@ export default function ScenePage() {
       <Canvas
         shadows="percentage"
         dpr={dpr}
-        camera={{ position: [6.5, 1.2, 2.6], fov: 42 }}
+        camera={{ position: [10, 3.5, 15], fov: 42 }}
         gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 0.62 }}
       >
         <PerformanceMonitor
