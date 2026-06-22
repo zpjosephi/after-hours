@@ -114,7 +114,7 @@ const ISLE = {
 };
 
 // where the figure sits; grass leaves a clearing here
-const CODER_POS: [number, number, number] = [2.35, 0.34, 1.42];
+const CODER_POS: [number, number, number] = [2.35, 0.06, 1.42];
 
 // shared noise so the grass scatters onto the exact terrain the geometry builds
 const ihash3 = (x: number, y: number, z: number) =>
@@ -849,27 +849,27 @@ function Angler({
 /* a laptop as a plain THREE group so it can be parented to a hand/spine bone */
 function buildLaptop() {
   const g = new THREE.Group();
-  const metal = new THREE.MeshStandardMaterial({ color: "#3a3d44", roughness: 0.45, metalness: 0.6 });
+  const metal = new THREE.MeshStandardMaterial({ color: "#9aa0aa", roughness: 0.35, metalness: 0.7 });
   const screenMat = new THREE.MeshStandardMaterial({
     color: "#0a0e16",
-    emissive: new THREE.Color("#cfe0ff"),
-    emissiveIntensity: 2.2,
-    roughness: 0.4,
+    emissive: new THREE.Color("#d4e6ff"),
+    emissiveIntensity: 3.6,
+    roughness: 0.35,
   });
-  const base = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.02, 0.2), metal);
+  const base = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.025, 0.26), metal);
   base.castShadow = true;
   g.add(base);
-  const lid = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.18, 0.02), metal);
-  lid.position.set(0, 0.095, -0.095);
-  lid.rotation.x = -0.42;
+  const lid = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.23, 0.022), metal);
+  lid.position.set(0, 0.115, -0.12);
+  lid.rotation.x = -0.4;
   lid.castShadow = true;
   g.add(lid);
-  const scr = new THREE.Mesh(new THREE.PlaneGeometry(0.22, 0.15), screenMat);
-  scr.position.set(0, 0.095, -0.083);
-  scr.rotation.x = -0.42;
+  const scr = new THREE.Mesh(new THREE.PlaneGeometry(0.3, 0.2), screenMat);
+  scr.position.set(0, 0.115, -0.106);
+  scr.rotation.x = -0.4;
   g.add(scr);
-  const pl = new THREE.PointLight(new THREE.Color("#bcd2f5"), 1.6, 1.5, 2);
-  pl.position.set(0, 0.14, 0.04);
+  const pl = new THREE.PointLight(new THREE.Color("#bcd2f5"), 3.2, 2.2, 2);
+  pl.position.set(0, 0.18, 0.06);
   g.add(pl);
   return g;
 }
@@ -888,10 +888,9 @@ function Person({
   const { scene, animations } = useGLTF("/models/person.glb");
   const { actions } = useAnimations(animations, scene);
   const lapRef = useRef<THREE.Group>(null);
-  const hands = useRef<{ l?: THREE.Object3D | null; r?: THREE.Object3D | null }>({});
+  const bones = useRef<{ hips?: THREE.Object3D | null }>({});
   const lapObj = useMemo(() => buildLaptop(), []);
   const tmpA = useMemo(() => new THREE.Vector3(), []);
-  const tmpB = useMemo(() => new THREE.Vector3(), []);
 
   useEffect(() => {
     scene.traverse((o) => {
@@ -901,8 +900,12 @@ function Person({
         m.frustumCulled = false;
       }
     });
-    hands.current.l = scene.getObjectByName("mixamorig:LeftHand");
-    hands.current.r = scene.getObjectByName("mixamorig:RightHand");
+    // GLTFLoader sanitizes ':' to '_', so match the Hips bone by substring
+    let hips: THREE.Object3D | null = null;
+    scene.traverse((o) => {
+      if (!hips && /hips/i.test(o.name)) hips = o;
+    });
+    bones.current.hips = hips;
   }, [scene]);
 
   useEffect(() => {
@@ -917,25 +920,24 @@ function Person({
     };
   }, [actions, reduced]);
 
-  // each frame, sit the laptop in the midpoint of the two hands (tracks pose + bob)
+  // each frame, rest the laptop on the thighs (anchored to the hips, nudged forward)
   useFrame(() => {
     const g = lapRef.current;
-    const l = hands.current.l;
-    const r = hands.current.r;
-    if (!g || !l || !r) return;
-    l.getWorldPosition(tmpA);
-    r.getWorldPosition(tmpB);
-    tmpA.add(tmpB).multiplyScalar(0.5);
-    tmpA.y -= 0.07; // keyboard just under the hands
+    const hips = bones.current.hips;
+    if (!g || !hips) return;
+    hips.getWorldPosition(tmpA);
+    tmpA.x += Math.sin(rotation) * 0.17; // forward onto the lap
+    tmpA.z += Math.cos(rotation) * 0.17;
+    tmpA.y -= 0.02;
     if (g.parent) g.parent.worldToLocal(tmpA);
     g.position.copy(tmpA);
-    g.rotation.set(0.18, rotation + Math.PI, 0); // screen faces the person
+    g.rotation.set(0.05, rotation + Math.PI, 0); // screen faces the person
   });
 
   return (
     <>
       <primitive object={scene} position={position} scale={scale} rotation={[0, rotation, 0]} />
-      <group ref={lapRef} scale={0.8}>
+      <group ref={lapRef} scale={1.0}>
         <primitive object={lapObj} />
       </group>
     </>
