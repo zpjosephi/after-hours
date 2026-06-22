@@ -10,6 +10,8 @@ import {
   Sparkles,
   Environment,
   useTexture,
+  PerformanceMonitor,
+  Loader,
 } from "@react-three/drei";
 import {
   EffectComposer,
@@ -21,8 +23,31 @@ import {
   Noise,
 } from "@react-three/postprocessing";
 import { BlendFunction } from "postprocessing";
-import { Suspense, useMemo, useRef, useState } from "react";
+import {
+  Suspense,
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import * as THREE from "three";
+
+/* honor the OS "reduce motion" setting across the whole scene */
+const ReducedMotion = createContext(false);
+
+function usePrefersReducedMotion() {
+  const [reduced, setReduced] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const update = () => setReduced(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
+  return reduced;
+}
 
 /* ---------------- Rock geometry: FBM-displaced icosahedron, grass on top ---------------- */
 function useRockGeometry(radius: number, detail: number, amp: number) {
@@ -183,8 +208,14 @@ function Island({
   material: THREE.Material;
 }) {
   const geo = useRockGeometry(1.1, 4, 0.2);
+  const reduced = useContext(ReducedMotion);
   return (
-    <Float speed={floatSpeed} rotationIntensity={0.1} floatIntensity={0.8} floatingRange={[-0.3, 0.3]}>
+    <Float
+      speed={reduced ? 0 : floatSpeed}
+      rotationIntensity={reduced ? 0 : 0.1}
+      floatIntensity={reduced ? 0 : 0.8}
+      floatingRange={[-0.3, 0.3]}
+    >
       <mesh
         geometry={geo}
         material={material}
@@ -251,9 +282,10 @@ function ShaderWaterfall({
   width?: number;
   height?: number;
 }) {
+  const reduced = useContext(ReducedMotion);
   const uniforms = useMemo(() => ({ uTime: { value: 0 } }), []);
   useFrame((state) => {
-    uniforms.uTime.value = state.clock.elapsedTime;
+    if (!reduced) uniforms.uTime.value = state.clock.elapsedTime;
   });
   return (
     <group position={position}>
@@ -362,8 +394,14 @@ function HeroIsland({ material }: { material: THREE.Material }) {
     () => new THREE.MeshStandardMaterial({ color: "#4a3623", roughness: 1, metalness: 0 }),
     []
   );
+  const reduced = useContext(ReducedMotion);
   return (
-    <Float speed={0.8} rotationIntensity={0.05} floatIntensity={0.5} floatingRange={[-0.2, 0.2]}>
+    <Float
+      speed={reduced ? 0 : 0.8}
+      rotationIntensity={reduced ? 0 : 0.05}
+      floatIntensity={reduced ? 0 : 0.5}
+      floatingRange={[-0.2, 0.2]}
+    >
       <group position={[0, 0.3, 0]}>
         <mesh geometry={geo} material={material} scale={[1.7, 2.45, 1.7]} castShadow receiveShadow />
         <Tree position={[0, 1.95, 0]} scale={1.05} />
@@ -374,12 +412,12 @@ function HeroIsland({ material }: { material: THREE.Material }) {
 }
 
 /* ---------------- Scene ---------------- */
-function Scene() {
+function Scene({ reduced }: { reduced: boolean }) {
   const [sun, setSun] = useState<THREE.Mesh | null>(null);
   const rockMat = useRockMaterial();
 
   return (
-    <>
+    <ReducedMotion.Provider value={reduced}>
       <fog attach="fog" args={["#cdac8a", 13, 42]} />
       <Sky sunPosition={[12, 1.2, -8]} turbidity={11} rayleigh={1.0} mieCoefficient={0.02} mieDirectionalG={0.96} />
 
@@ -417,18 +455,18 @@ function Scene() {
       <ShaderWaterfall position={[0.2, -2.4, 0.35]} width={1.4} height={6.5} />
 
       {/* drifting dust motes */}
-      <Sparkles count={140} scale={[24, 13, 24]} size={3} speed={0.3} opacity={0.5} color="#ffe9c8" />
+      <Sparkles count={140} scale={[24, 13, 24]} size={3} speed={reduced ? 0 : 0.3} opacity={0.5} color="#ffe9c8" />
 
       {/* volumetric cloud sea + mist at the waterfall bases */}
       <Clouds material={THREE.MeshBasicMaterial} limit={500}>
-        <Cloud seed={1} bounds={[28, 3, 18]} volume={10} segments={60} color="#fff4e2" opacity={0.85} fade={32} speed={0.15} position={[0, -6.5, -2]} />
-        <Cloud seed={7} bounds={[24, 2, 14]} volume={8} segments={48} color="#e7d3b6" opacity={0.7} fade={32} speed={0.1} position={[2, -8, -6]} />
-        <Cloud seed={3} bounds={[4, 1.5, 4]} volume={4} segments={24} color="#ffffff" opacity={0.95} fade={10} speed={0.25} position={[0.4, -6.6, 0.2]} />
-        <Cloud seed={9} bounds={[3, 1.2, 3]} volume={3} segments={20} color="#ffffff" opacity={0.9} fade={10} speed={0.3} position={[4.2, -7, -1.8]} />
+        <Cloud seed={1} bounds={[28, 3, 18]} volume={10} segments={60} color="#fff4e2" opacity={0.85} fade={32} speed={reduced ? 0 : 0.15} position={[0, -6.5, -2]} />
+        <Cloud seed={7} bounds={[24, 2, 14]} volume={8} segments={48} color="#e7d3b6" opacity={0.7} fade={32} speed={reduced ? 0 : 0.1} position={[2, -8, -6]} />
+        <Cloud seed={3} bounds={[4, 1.5, 4]} volume={4} segments={24} color="#ffffff" opacity={0.95} fade={10} speed={reduced ? 0 : 0.25} position={[0.4, -6.6, 0.2]} />
+        <Cloud seed={9} bounds={[3, 1.2, 3]} volume={3} segments={20} color="#ffffff" opacity={0.9} fade={10} speed={reduced ? 0 : 0.3} position={[4.2, -7, -1.8]} />
       </Clouds>
 
       <OrbitControls
-        autoRotate
+        autoRotate={!reduced}
         autoRotateSpeed={0.32}
         enablePan={false}
         enableZoom
@@ -449,23 +487,34 @@ function Scene() {
           <Vignette eskil={false} offset={0.3} darkness={0.85} />
         </EffectComposer>
       )}
-    </>
+    </ReducedMotion.Provider>
   );
 }
 
 export default function ScenePage() {
+  const reduced = usePrefersReducedMotion();
+  // start mid-range; PerformanceMonitor nudges it up on fast GPUs, down when frames drop
+  const [dpr, setDpr] = useState(1.5);
+
   return (
     <main className="relative h-screen w-full bg-[#14213a]">
       <Canvas
         shadows="percentage"
-        dpr={[1, 2]}
+        dpr={dpr}
         camera={{ position: [7, 2.5, 11], fov: 42 }}
         gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 0.62 }}
       >
+        <PerformanceMonitor
+          onIncline={() => setDpr(2)}
+          onDecline={() => setDpr(1)}
+          flipflops={3}
+          onFallback={() => setDpr(1)}
+        />
         <Suspense fallback={null}>
-          <Scene />
+          <Scene reduced={reduced} />
         </Suspense>
       </Canvas>
+      <Loader />
 
       <div className="pointer-events-none absolute bottom-[9%] left-6 z-10 md:left-12">
         <p className="mb-2 text-[10px] uppercase tracking-[0.35em] text-primary/60">Three.js · real-time 3D</p>
