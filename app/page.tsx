@@ -1386,19 +1386,13 @@ function SceneLoader() {
       />
       {/* wordmark + count, fading as the clouds begin to part */}
       <div
-        className={`absolute inset-0 flex flex-col items-center justify-center transition-opacity duration-500 ${
+        className={`absolute inset-0 flex items-center justify-center transition-opacity duration-500 ${
           done ? "opacity-0" : "opacity-100"
         }`}
       >
-        <p className="mb-3 text-[10px] uppercase tracking-[0.4em] text-[#6b5743]/70">
-          Three.js · real-time 3D
-        </p>
         <h2 className="text-3xl font-medium tracking-[-0.03em] text-[#2f3a44] sm:text-4xl">
           After hours
         </h2>
-        <p className="mt-5 text-sm tabular-nums tracking-[0.2em] text-[#6b5743]/85">
-          {Math.round(progress)}%
-        </p>
       </div>
     </div>
   );
@@ -1411,7 +1405,7 @@ export default function Home() {
   const [night, setNight] = useState(false);
 
   return (
-    <main className="relative h-screen w-full bg-[#14213a]">
+    <main className="relative h-screen w-full bg-[#cdac8a]">
       <Canvas
         shadows="percentage"
         dpr={dpr}
