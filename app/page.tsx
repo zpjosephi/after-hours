@@ -1373,6 +1373,7 @@ export default function Home() {
           <br />
           clouds
         </h1>
+        <p className="mt-4 text-[11px] tracking-[0.08em] text-primary/55">by zpjosephi</p>
       </div>
 
       <p className="pointer-events-none absolute right-6 top-6 z-10 text-[11px] text-primary/50 md:right-10">
