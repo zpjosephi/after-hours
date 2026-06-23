@@ -1,6 +1,6 @@
 "use client";
 
-import { Canvas, useFrame } from "@react-three/fiber";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import {
   Clouds,
   Cloud,
@@ -323,6 +323,7 @@ const WATER_VERT = /* glsl */ `
 const WATER_FRAG = /* glsl */ `
   varying vec2 vUv;
   uniform float uTime;
+  uniform float uNight;
 
   float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453); }
   float noise(vec2 p){
@@ -347,7 +348,7 @@ const WATER_FRAG = /* glsl */ `
     float foamN   = fbm(vec2(uv.x * 11.0 + 3.0, fall * 5.0));
     float water   = body * 0.45 + streaks * 0.55;
 
-    vec3 deep = vec3(0.45, 0.69, 0.89);
+    vec3 deep = vec3(0.6, 0.78, 0.93);
     vec3 foam = vec3(1.0);
     vec3 col = mix(deep, foam, clamp(water, 0.0, 1.0));
 
@@ -360,10 +361,13 @@ const WATER_FRAG = /* glsl */ `
     // soft feathered edges; broken alpha (streaks + foam) reads as volume, not paper
     float edge = smoothstep(0.0, 0.14, uv.x) * smoothstep(1.0, 0.86, uv.x);
     float bands = smoothstep(0.24, 0.70, streaks);
-    float alpha = edge * (0.62 + 0.34 * water);   // more solid so the cliff doesn't show through
-    alpha = mix(alpha * 0.7, alpha, bands);
+    float alpha = edge * (0.82 + 0.18 * water);   // solid enough that the dark cliff/dirt never shows through
+    alpha = mix(alpha * 0.88, alpha, bands);
     alpha = max(alpha, base * edge * 0.85);
     alpha = max(alpha, smoothstep(0.6, 0.95, foamN) * edge * 0.6);
+    // dim and cool the fall as night falls, so it doesn't glow bright over a dark island
+    col *= mix(1.0, 0.92, uNight);
+    col = mix(col, col * vec3(0.72, 0.82, 1.0), uNight * 0.5);
     gl_FragColor = vec4(col, clamp(alpha, 0.0, 0.97));
   }
 `;
@@ -372,24 +376,46 @@ function ShaderWaterfall({
   position,
   width = 1.2,
   height = 6,
-  faceAxis,
+  night = false,
 }: {
   position: [number, number, number];
   width?: number;
   height?: number;
-  faceAxis?: "x" | "z";
+  night?: boolean;
 }) {
   const reduced = useContext(ReducedMotion);
-  const uniforms = useMemo(() => ({ uTime: { value: 0 } }), []);
-  useFrame((state) => {
+  const group = useRef<THREE.Group>(null);
+  const uniforms = useMemo(() => ({ uTime: { value: 0 }, uNight: { value: 0 } }), []);
+  const tmpPos = useMemo(() => new THREE.Vector3(), []);
+  const tmpQuat = useMemo(() => new THREE.Quaternion(), []);
+  const tmpEuler = useMemo(() => new THREE.Euler(0, 0, 0, "YXZ"), []);
+  // a shallow 3-plane fan around the facing (+Z) direction, so the column reads
+  // as rounded volume instead of one flat sheet
+  const fan = [-0.3, 0, 0.3];
+  useFrame((state, dt) => {
     if (!reduced) uniforms.uTime.value = state.clock.elapsedTime;
+    uniforms.uNight.value += ((night ? 1 : 0) - uniforms.uNight.value) * (1 - Math.exp(-2.4 * Math.min(dt, 0.05)));
+    const g = group.current;
+    if (!g) return;
+    // Yaw the fall to face the camera (Y axis only, so it stays vertical and
+    // anchored to the brink). It pivots on the vertical line through its centre,
+    // so it never goes edge-on and never reads as paper.
+    g.getWorldPosition(tmpPos);
+    const worldYaw = Math.atan2(
+      state.camera.position.x - tmpPos.x,
+      state.camera.position.z - tmpPos.z
+    );
+    let parentYaw = 0;
+    if (g.parent) {
+      g.parent.getWorldQuaternion(tmpQuat);
+      tmpEuler.setFromQuaternion(tmpQuat);
+      parentYaw = tmpEuler.y;
+    }
+    g.rotation.y = worldYaw - parentYaw;
   });
-  // a shallow fan facing outward off the cliff, or a perpendicular cross for free-standing falls
-  const angles =
-    faceAxis === "x" ? [Math.PI / 2 - 0.34, Math.PI / 2, Math.PI / 2 + 0.34] : [0, Math.PI / 2];
   return (
-    <group position={position}>
-      {angles.map((ry, i) => (
+    <group ref={group} position={position}>
+      {fan.map((ry, i) => (
         <mesh key={i} rotation={[0, ry, 0]}>
           <planeGeometry args={[width, height, 1, 1]} />
           <shaderMaterial
@@ -485,17 +511,20 @@ function buildStreamGeometry() {
   return g;
 }
 
-function Stream() {
+function Stream({ night }: { night: boolean }) {
   const reduced = useContext(ReducedMotion);
+  const tn = useRef(0);
   const uniforms = useMemo(() => ({ uTime: { value: 0 } }), []);
   const geo = useMemo(() => buildStreamGeometry(), []);
   const mat = useMemo(() => {
     const m = new THREE.MeshStandardMaterial({
       color: "#ffffff",
       transparent: false, // opaque so it never mis-sorts against the falls
-      roughness: 0.9, // fully matte, never a mirror
+      roughness: 0.4, // softer sheen, not a dark mirror that picks up gloomy reflections
       metalness: 0,
-      envMapIntensity: 0.0,
+      envMapIntensity: 0.5, // gentle reflection, so its own light colour stays dominant
+      emissive: new THREE.Color("#9fc0e8"), // a light moonlit glow, brightened at night
+      emissiveIntensity: 0,
       side: THREE.DoubleSide,
     });
     m.onBeforeCompile = (sh) => {
@@ -525,29 +554,193 @@ function Stream() {
            float fl  = svn(vec2(u * 16.0 - t * 1.8, vSZ * 20.0)) + 0.5 * svn(vec2(u * 7.0 - t * 1.1, vSZ * 9.0));
            float flx = svn(vec2((u + e) * 16.0 - t * 1.8, vSZ * 20.0)) + 0.5 * svn(vec2((u + e) * 7.0 - t * 1.1, vSZ * 9.0));
            float flz = svn(vec2(u * 16.0 - t * 1.8, (vSZ + e) * 20.0)) + 0.5 * svn(vec2(u * 7.0 - t * 1.1, (vSZ + e) * 9.0));
-           normal = normalize(normal + vec3((fl - flx) / e * 0.07, 0.0, (fl - flz) / e * 0.07));`
+           normal = normalize(normal + vec3((fl - flx) / e * 0.2, 0.0, (fl - flz) / e * 0.2));`
         )
         .replace(
           "#include <map_fragment>",
           `float uu = clamp((vSX - ${STREAM_X0.toFixed(2)}) / (${(STREAM_X1 - STREAM_X0).toFixed(2)}), 0.0, 1.0);
            float foam = svn(vec2(uu * 26.0 - uTime * 2.6, vSZ * 22.0));
-           vec3 water = vec3(0.45, 0.68, 0.82); // lighter, more natural river blue
+           vec3 water = vec3(0.74, 0.86, 0.96); // a light blue-white, so it matches the white falls
            // foam streaks, and whiten as it nears the brink so it blends into the fall
-           water = mix(water, vec3(1.0), smoothstep(0.66, 0.96, foam) * 0.4 + smoothstep(0.7, 1.0, uu) * 0.4);
+           water = mix(water, vec3(1.0), smoothstep(0.6, 0.92, foam) * 0.5 + smoothstep(0.74, 1.0, uu) * 0.4);
            diffuseColor.rgb *= water;`
         );
     };
-    m.customProgramCacheKey = () => "stream-flow-v1";
+    m.customProgramCacheKey = () => "stream-flow-v4";
     return m;
   }, [uniforms]);
-  useFrame((s) => {
+  useFrame((s, dt) => {
     if (!reduced) uniforms.uTime.value = s.clock.elapsedTime;
+    // moonlit glow so the stream stays visible at night instead of going near-black
+    tn.current += ((night ? 1 : 0) - tn.current) * (1 - Math.exp(-2.4 * Math.min(dt, 0.05)));
+    mat.emissiveIntensity = tn.current * 0.55;
   });
   return <mesh geometry={geo} material={mat} renderOrder={1} />;
 }
 
 /* ---------------- Hero island: rock + tree + roots, bobbing as one ---------------- */
-function HeroIsland({ material }: { material: THREE.Material }) {
+/* ---------------- Paper lanterns strung in the tree, lit only at night ---------------- */
+function Lanterns({ night }: { night: boolean }) {
+  const t = useRef(0);
+  const orbMat = useMemo(
+    () => new THREE.MeshStandardMaterial({ color: "#ffdca6", emissive: new THREE.Color("#ffb24d"), emissiveIntensity: 0, roughness: 0.5, metalness: 0 }),
+    []
+  );
+  const stringMat = useMemo(
+    () => new THREE.MeshStandardMaterial({ color: "#241c14", roughness: 1, metalness: 0 }),
+    []
+  );
+  const l1 = useRef<THREE.PointLight>(null);
+  const l2 = useRef<THREE.PointLight>(null);
+  const spots = useMemo(
+    () =>
+      [
+        [0.15, 1.95, -1.55],
+        [1.15, 2.05, -2.0],
+        [0.55, 1.6, -2.35],
+        [1.3, 1.72, -1.4],
+        [0.05, 1.7, -2.05],
+      ] as [number, number, number][],
+    []
+  );
+  useFrame((_, dt) => {
+    const k = 1 - Math.exp(-2.4 * Math.min(dt, 0.05));
+    t.current += ((night ? 1 : 0) - t.current) * k;
+    orbMat.emissiveIntensity = t.current * 2.8;
+    if (l1.current) l1.current.intensity = t.current * 2.0;
+    if (l2.current) l2.current.intensity = t.current * 1.6;
+  });
+  return (
+    <group>
+      {spots.map((p, i) => (
+        <group key={i} position={p}>
+          {/* short hanging cord */}
+          <mesh material={stringMat} position={[0, 0.2, 0]}>
+            <cylinderGeometry args={[0.005, 0.005, 0.4, 5]} />
+          </mesh>
+          {/* the lantern itself */}
+          <mesh material={orbMat}>
+            <sphereGeometry args={[0.075, 14, 12]} />
+          </mesh>
+        </group>
+      ))}
+      <pointLight ref={l1} position={[0.55, 1.85, -1.85]} color="#ffba6e" intensity={0} distance={3.4} decay={2} />
+      <pointLight ref={l2} position={[1.0, 1.7, -1.7]} color="#ffcf8a" intensity={0} distance={3.0} decay={2} />
+    </group>
+  );
+}
+
+/* ---------------- An owl perched in the tree, its eyes lighting up at night ---------------- */
+function Owl({ night, position }: { night: boolean; position: [number, number, number] }) {
+  const t = useRef(0);
+  const grp = useRef<THREE.Group>(null);
+  const bodyMat = useMemo(
+    () => new THREE.MeshStandardMaterial({ color: "#2a2620", roughness: 0.92, metalness: 0 }),
+    []
+  );
+  const eyeMat = useMemo(
+    () => new THREE.MeshStandardMaterial({ color: "#ffd27a", emissive: new THREE.Color("#ffcf6a"), emissiveIntensity: 0.15, roughness: 0.4 }),
+    []
+  );
+  useFrame((_, dt) => {
+    const k = 1 - Math.exp(-2.4 * Math.min(dt, 0.05));
+    t.current += ((night ? 1 : 0) - t.current) * k;
+    eyeMat.emissiveIntensity = 0.15 + t.current * 2.4; // eyes glow once it's dark
+    if (grp.current) grp.current.scale.setScalar(t.current); // only present at night
+  });
+  return (
+    <group ref={grp} position={position} rotation={[0, 0.4, 0]} scale={0}>
+      {/* a round body + head, kept as a simple dark silhouette */}
+      <mesh material={bodyMat} castShadow>
+        <sphereGeometry args={[0.14, 16, 14]} />
+      </mesh>
+      <mesh material={bodyMat} position={[0, 0.16, 0.01]} castShadow>
+        <sphereGeometry args={[0.115, 16, 14]} />
+      </mesh>
+      {/* eyes */}
+      <mesh material={eyeMat} position={[-0.045, 0.19, 0.095]}>
+        <sphereGeometry args={[0.028, 10, 10]} />
+      </mesh>
+      <mesh material={eyeMat} position={[0.045, 0.19, 0.095]}>
+        <sphereGeometry args={[0.028, 10, 10]} />
+      </mesh>
+    </group>
+  );
+}
+
+/* ---------------- Leaves drifting down from the tree, swaying on the wind ---------------- */
+function Leaves({ count = 18 }: { count?: number }) {
+  const reduced = useContext(ReducedMotion);
+  const ref = useRef<THREE.InstancedMesh>(null);
+  const geo = useMemo(() => new THREE.PlaneGeometry(0.09, 0.13), []);
+  const mat = useMemo(
+    () => new THREE.MeshStandardMaterial({ color: "#869a47", side: THREE.DoubleSide, roughness: 0.85, metalness: 0 }),
+    []
+  );
+  const dummy = useMemo(() => new THREE.Object3D(), []);
+  const seeds = useMemo(
+    () =>
+      Array.from({ length: count }, () => ({
+        x: 0.7 + (Math.random() - 0.5) * 2.6,
+        z: -1.85 + (Math.random() - 0.5) * 2.6,
+        top: 2.4 + Math.random() * 0.9,
+        speed: 0.05 + Math.random() * 0.06,
+        sway: 0.4 + Math.random() * 0.6,
+        phase: Math.random() * Math.PI * 2,
+        spin: (Math.random() - 0.5) * 1.6,
+      })),
+    [count]
+  );
+  useFrame((state) => {
+    const mesh = ref.current;
+    if (!mesh) return;
+    const e = reduced ? 0 : state.clock.elapsedTime;
+    seeds.forEach((s, i) => {
+      const span = s.top - 0.2;
+      const fall = (e * s.speed + s.phase) % 1; // loops top -> bottom
+      const y = s.top - fall * span;
+      const x = s.x + Math.sin(e * s.sway + s.phase) * 0.28;
+      const z = s.z + Math.cos(e * s.sway * 0.8 + s.phase) * 0.22;
+      dummy.position.set(x, y, z);
+      dummy.rotation.set(e * s.spin, e * s.spin * 0.7 + s.phase, fall * 6.0);
+      dummy.updateMatrix();
+      mesh.setMatrixAt(i, dummy.matrix);
+    });
+    mesh.instanceMatrix.needsUpdate = true;
+  });
+  return <instancedMesh ref={ref} args={[geo, mat, count]} frustumCulled={false} castShadow />;
+}
+
+/* ---------------- An occasional shooting star streaking the night sky ---------------- */
+function ShootingStar({ night }: { night: boolean }) {
+  const ref = useRef<THREE.Mesh>(null);
+  const mat = useMemo(
+    () => new THREE.MeshBasicMaterial({ color: "#e6efff", transparent: true, opacity: 0, toneMapped: false, blending: THREE.AdditiveBlending, depthWrite: false }),
+    []
+  );
+  useFrame((state) => {
+    const m = ref.current;
+    if (!m) return;
+    const period = 9;
+    const phase = (state.clock.elapsedTime % period) / period;
+    const dur = 0.13; // fraction of the cycle the streak is visible
+    if (!night || phase > dur) {
+      mat.opacity = 0;
+      return;
+    }
+    const k = phase / dur; // 0..1 along the arc
+    m.position.set(THREE.MathUtils.lerp(-22, 16, k), THREE.MathUtils.lerp(15, 9.5, k), -17);
+    m.rotation.z = -0.14; // lie along the descending slope
+    mat.opacity = Math.sin(k * Math.PI) * 0.85;
+  });
+  return (
+    <mesh ref={ref} material={mat}>
+      <boxGeometry args={[1.8, 0.035, 0.035]} />
+    </mesh>
+  );
+}
+
+function HeroIsland({ material, night }: { material: THREE.Material; night: boolean }) {
   // wide terrain island, smooth and expansive
   const geo = useIslandGeometry(6);
   const boulderGeo = useRockGeometry(1.1, 5, 0.42);
@@ -573,6 +766,11 @@ function HeroIsland({ material }: { material: THREE.Material }) {
         <Grass />
         {/* real tree, off to the back away from the water */}
         <RealTree position={[0.7, 0.42, -1.85]} scale={1.0} />
+        {/* paper lanterns strung in the tree (glow at night) + leaves drifting down */}
+        <Lanterns night={night} />
+        <Leaves />
+        {/* an owl perched in the tree, eyes glowing once it's dark */}
+        <Owl night={night} position={[0.5, 1.5, -1.5]} />
         {/* a real person working at the rim; the laptop is parented to their spine bone */}
         <Person position={CODER_POS} scale={1.0} rotation={1.0} />
         <Roots material={barkMat} />
@@ -587,21 +785,21 @@ function HeroIsland({ material }: { material: THREE.Material }) {
           receiveShadow
         />
         {/* the upper fall pours down the rock face onto the plateau */}
-        <ShaderWaterfall position={[-0.66, 2.0, 0]} width={0.92} height={3.0} faceAxis="x" />
+        <ShaderWaterfall position={[-0.66, 2.0, 0]} width={0.92} height={3.0} night={night} />
         {/* foam where the water springs out of the rock (no floating disc) */}
         <Clouds material={THREE.MeshBasicMaterial} limit={30}>
           <Cloud seed={21} bounds={[0.62, 0.55, 1.0]} volume={1.5} segments={18} color="#ffffff" opacity={0.92} fade={1.0} speed={0} growth={0} position={[-0.66, 3.4, 0]} />
         </Clouds>
 
         {/* the (opaque) stream carries the water across the plateau to the rim */}
-        <Stream />
+        <Stream night={night} />
 
         {/* the lower fall pours off the cliff into the cloud sea */}
-        <ShaderWaterfall position={[3.4, -3.56, 0]} width={0.66} height={7.3} faceAxis="x" />
+        <ShaderWaterfall position={[3.4, -3.56, 0]} width={0.66} height={7.3} night={night} />
 
-        {/* small STATIC foam puff at the brink: covers the seam from all angles, no pulsing */}
+        {/* a modest foam puff at the brink, softening where the stream meets the fall */}
         <Clouds material={THREE.MeshBasicMaterial} limit={30}>
-          <Cloud seed={11} bounds={[0.55, 0.3, 0.46]} volume={0.6} segments={16} color="#ffffff" opacity={0.78} fade={1.1} speed={0} growth={0} position={[3.36, -0.02, 0]} />
+          <Cloud seed={11} bounds={[0.55, 0.32, 0.5]} volume={0.7} segments={16} color="#ffffff" opacity={0.8} fade={1.1} speed={0} growth={0} position={[3.38, -0.08, 0]} />
         </Clouds>
 
         {/* white spray at the falls (points, never transparent panels) */}
@@ -809,11 +1007,17 @@ function Bird({
   );
 }
 
-function Birds() {
+function Birds({ night }: { night: boolean }) {
+  const t = useRef(0);
   const mat = useMemo(
-    () => new THREE.MeshBasicMaterial({ color: "#2c2b33", side: THREE.DoubleSide }),
+    () => new THREE.MeshBasicMaterial({ color: "#2c2b33", side: THREE.DoubleSide, transparent: true }),
     []
   );
+  useFrame((_, dt) => {
+    // the flock heads home to roost as night falls
+    t.current += ((night ? 1 : 0) - t.current) * (1 - Math.exp(-2.0 * Math.min(dt, 0.05)));
+    mat.opacity = 1 - t.current;
+  });
   const flock = useMemo(
     () =>
       Array.from({ length: 12 }, (_, i) => ({
@@ -926,29 +1130,148 @@ function Grass({ count = 16000 }: { count?: number }) {
 }
 
 /* ---------------- Scene ---------------- */
-function Scene({ reduced }: { reduced: boolean }) {
+function Scene({ reduced, night }: { reduced: boolean; night: boolean }) {
   const [sun, setSun] = useState<THREE.Mesh | null>(null);
   const rockMat = useRockMaterial();
   const distantGeo = useIslandGeometry(3); // shared low-poly terrain for background islands
 
+  const { gl, scene } = useThree();
+  const tNight = useRef(0); // 0 = golden sunset, 1 = night, eased toward `night`
+  const fogRef = useRef<THREE.Fog>(null);
+  const dirRef = useRef<THREE.DirectionalLight>(null);
+  const ambRef = useRef<THREE.AmbientLight>(null);
+  const hemiRef = useRef<THREE.HemisphereLight>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const skyRef = useRef<any>(null);
+  const starsGroup = useRef<THREE.Group>(null);
+
+  const cols = useMemo(
+    () => ({
+      fogDay: new THREE.Color("#cdac8a"),
+      fogNight: new THREE.Color("#1b2a4d"),
+      keyDay: new THREE.Color("#ffc98a"),
+      keyNight: new THREE.Color("#93acea"),
+      sunDay: new THREE.Color("#fff1cf"),
+      moon: new THREE.Color("#cddcff"),
+    }),
+    []
+  );
+
+  // a high dome of stars and a low swarm of fireflies, both faded in by night
+  const stars = useMemo(() => {
+    const g = new THREE.BufferGeometry();
+    const n = 1800;
+    const a = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) {
+      const th = Math.random() * Math.PI * 2;
+      const y = 0.12 + Math.random() * 0.88;
+      const r = Math.sqrt(1 - y * y) * 90;
+      a[i * 3] = Math.cos(th) * r;
+      a[i * 3 + 1] = y * 90;
+      a[i * 3 + 2] = Math.sin(th) * r;
+    }
+    g.setAttribute("position", new THREE.Float32BufferAttribute(a, 3));
+    const m = new THREE.PointsMaterial({ color: "#eaf0ff", size: 0.9, sizeAttenuation: false, transparent: true, opacity: 0, depthWrite: false, toneMapped: false });
+    return { g, m };
+  }, []);
+
+  const fireflies = useMemo(() => {
+    const n = 26;
+    const base = new Float32Array(n * 3);
+    const params: { ax: number; ay: number; az: number; fx: number; fy: number; fz: number; ph: number }[] = [];
+    for (let i = 0; i < n; i++) {
+      base[i * 3] = (Math.random() - 0.5) * 6.4;
+      base[i * 3 + 1] = 0.7 + Math.random() * 1.9;
+      base[i * 3 + 2] = 0.3 + (Math.random() - 0.5) * 5.6;
+      params.push({
+        ax: 0.18 + Math.random() * 0.3,
+        ay: 0.12 + Math.random() * 0.22,
+        az: 0.18 + Math.random() * 0.3,
+        fx: 0.3 + Math.random() * 0.5,
+        fy: 0.4 + Math.random() * 0.6,
+        fz: 0.3 + Math.random() * 0.5,
+        ph: Math.random() * Math.PI * 2,
+      });
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.Float32BufferAttribute(base.slice(), 3));
+    const m = new THREE.PointsMaterial({ color: "#ffd98a", size: 0.1, sizeAttenuation: true, transparent: true, opacity: 0, depthWrite: false, toneMapped: false, blending: THREE.AdditiveBlending });
+    return { g, m, base, params, n };
+  }, []);
+
+  useFrame((state, dt) => {
+    const L = THREE.MathUtils.lerp;
+    const k = 1 - Math.exp(-2.4 * Math.min(dt, 0.05)); // frame-rate independent ease
+    tNight.current += ((night ? 1 : 0) - tNight.current) * k;
+    const t = tNight.current;
+
+    gl.toneMappingExposure = L(0.62, 0.55, t);
+    (scene as unknown as { environmentIntensity: number }).environmentIntensity = L(0.85, 0.6, t);
+
+    if (fogRef.current) {
+      fogRef.current.color.copy(cols.fogDay).lerp(cols.fogNight, t);
+      fogRef.current.far = L(42, 28, t);
+    }
+    if (dirRef.current) {
+      dirRef.current.intensity = L(2.6, 1.6, t);
+      dirRef.current.color.copy(cols.keyDay).lerp(cols.keyNight, t);
+    }
+    if (ambRef.current) ambRef.current.intensity = L(0.12, 0.1, t);
+    if (hemiRef.current) hemiRef.current.intensity = L(0.22, 0.18, t);
+    const su = skyRef.current?.material?.uniforms?.sunPosition;
+    if (su) su.value.set(12, L(1.2, -4.0, t), -8); // sun sinks below the horizon at night
+    if (sun) {
+      (sun.material as THREE.MeshBasicMaterial).color.copy(cols.sunDay).lerp(cols.moon, t);
+      sun.scale.setScalar(L(1, 0.6, t));
+    }
+    stars.m.opacity = t;
+    const e = state.clock.elapsedTime;
+    const twinkle = 0.6 + 0.4 * (0.5 + 0.5 * Math.sin(e * 2.5));
+    fireflies.m.opacity = t * (reduced ? 0.7 : twinkle);
+    if (!reduced && t > 0.01) {
+      // each firefly wanders on its own little sine path, so they drift instead of sitting still
+      const fp = fireflies.g.attributes.position as THREE.BufferAttribute;
+      for (let i = 0; i < fireflies.n; i++) {
+        const p = fireflies.params[i];
+        fp.setXYZ(
+          i,
+          fireflies.base[i * 3] + Math.sin(e * p.fx + p.ph) * p.ax,
+          fireflies.base[i * 3 + 1] + Math.sin(e * p.fy + p.ph * 1.3) * p.ay,
+          fireflies.base[i * 3 + 2] + Math.cos(e * p.fz + p.ph) * p.az
+        );
+      }
+      fp.needsUpdate = true;
+    }
+    // pin the star dome to the camera so it never parallaxes against the islands:
+    // that's what reads as a distant sky instead of dots floating between them
+    if (starsGroup.current) starsGroup.current.position.copy(state.camera.position);
+  });
+
   return (
     <ReducedMotion.Provider value={reduced}>
-      <fog attach="fog" args={["#cdac8a", 13, 42]} />
-      <Sky sunPosition={[12, 1.2, -8]} turbidity={11} rayleigh={1.0} mieCoefficient={0.02} mieDirectionalG={0.96} />
+      <fog ref={fogRef} attach="fog" args={["#cdac8a", 13, 42]} />
+      <Sky ref={skyRef} sunPosition={[12, 1.2, -8]} turbidity={11} rayleigh={1.0} mieCoefficient={0.02} mieDirectionalG={0.96} />
 
       {/* real captured HDRI (Poly Haven, golden hour) drives ambient + reflections; sky stays procedural */}
       <Environment files="/hdri/venice_sunset_1k.hdr" environmentIntensity={0.85} />
 
-      {/* sun disc — both a visible light source and the god-ray origin */}
+      {/* sun disc by day, dimmed and cooled into a moon by night; also the god-ray origin */}
       <mesh ref={setSun} position={[34, 3.4, -22]}>
         <sphereGeometry args={[3, 24, 24]} />
         <meshBasicMaterial color="#fff1cf" toneMapped={false} />
       </mesh>
 
+      {/* stars on a high dome + fireflies low over the island; opacity driven by night */}
+      <group ref={starsGroup}>
+        <points geometry={stars.g} material={stars.m} frustumCulled={false} />
+      </group>
+      <points geometry={fireflies.g} material={fireflies.m} position={[0, 1, 0]} frustumCulled={false} />
+
       {/* HDRI now carries the fill, so direct lights only add the warm key + crisp shadow */}
-      <ambientLight intensity={0.12} />
-      <hemisphereLight args={["#ffe6c2", "#3a4763", 0.22]} />
+      <ambientLight ref={ambRef} intensity={0.12} />
+      <hemisphereLight ref={hemiRef} args={["#ffe6c2", "#3a4763", 0.22]} />
       <directionalLight
+        ref={dirRef}
         position={[10, 3, -6]}
         intensity={2.6}
         color="#ffc98a"
@@ -959,15 +1282,18 @@ function Scene({ reduced }: { reduced: boolean }) {
       />
 
       {/* the hero: one detailed island carrying the tree + roots */}
-      <HeroIsland material={rockMat} />
+      <HeroIsland material={rockMat} night={night} />
 
       {/* distant supporting islands — same terrain, small and set back into the haze */}
       <DistantIsland geometry={distantGeo} material={rockMat} position={[-7.5, 4.6, -11]} scale={0.22} floatSpeed={0.7} />
       <DistantIsland geometry={distantGeo} material={rockMat} position={[8, 3.7, -12]} scale={0.19} floatSpeed={0.95} />
       <DistantIsland geometry={distantGeo} material={rockMat} position={[6.5, -3.6, -9]} scale={0.26} floatSpeed={1.2} />
 
-      {/* birds wheeling through the upper sky */}
-      <Birds />
+      {/* birds wheeling by day; they roost (fade out) at night */}
+      <Birds night={night} />
+
+      {/* an occasional shooting star, only at night */}
+      <ShootingStar night={night} />
 
       {/* drifting dust motes */}
       <Sparkles count={140} scale={[24, 13, 24]} size={3} speed={reduced ? 0 : 0.3} opacity={0.5} color="#ffe9c8" />
@@ -1015,6 +1341,7 @@ export default function Home() {
   const reduced = usePrefersReducedMotion();
   // start mid-range; PerformanceMonitor nudges it up on fast GPUs, down when frames drop
   const [dpr, setDpr] = useState(1.5);
+  const [night, setNight] = useState(false);
 
   return (
     <main className="relative h-screen w-full bg-[#14213a]">
@@ -1031,7 +1358,7 @@ export default function Home() {
           onFallback={() => setDpr(1)}
         />
         <Suspense fallback={null}>
-          <Scene reduced={reduced} />
+          <Scene reduced={reduced} night={night} />
         </Suspense>
       </Canvas>
       <Loader />
@@ -1051,6 +1378,24 @@ export default function Home() {
       <p className="pointer-events-none absolute right-6 top-6 z-10 text-[11px] text-primary/50 md:right-10">
         drag to look around · scroll to zoom
       </p>
+
+      <button
+        type="button"
+        onClick={() => setNight((n) => !n)}
+        aria-label={night ? "Switch to daytime" : "Switch to night"}
+        className="absolute left-6 top-6 z-20 inline-flex h-10 w-10 items-center justify-center rounded-full border border-primary/25 bg-black/25 text-primary/80 transition-colors hover:border-primary/50 hover:text-primary md:left-12"
+      >
+        {night ? (
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <circle cx="12" cy="12" r="4" />
+            <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
+          </svg>
+        ) : (
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+          </svg>
+        )}
+      </button>
     </main>
   );
 }
