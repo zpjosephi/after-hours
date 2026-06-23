@@ -13,7 +13,7 @@ import {
   useGLTF,
   useAnimations,
   PerformanceMonitor,
-  Loader,
+  useProgress,
 } from "@react-three/drei";
 import {
   EffectComposer,
@@ -1337,6 +1337,73 @@ function Scene({ reduced, night }: { reduced: boolean; night: boolean }) {
   );
 }
 
+/* ---------------- Loading screen: warm cloud banks that part to reveal the scene ---------------- */
+function SceneLoader() {
+  const { progress, active } = useProgress();
+  const [hidden, setHidden] = useState(false);
+  const done = progress >= 100 && !active;
+  useEffect(() => {
+    if (done) {
+      const id = setTimeout(() => setHidden(true), 1300); // unmount after the clouds finish parting
+      return () => clearTimeout(id);
+    }
+  }, [done]);
+  if (hidden) return null;
+
+  const cloudA: React.CSSProperties = {
+    background:
+      "radial-gradient(55% 45% at 35% 28%, rgba(255,255,255,0.95), transparent 70%)," +
+      "radial-gradient(50% 40% at 62% 62%, rgba(255,248,236,0.92), transparent 72%)," +
+      "radial-gradient(75% 55% at 42% 88%, rgba(243,232,214,0.96), transparent 76%)," +
+      "linear-gradient(160deg, #f7f0e3, #e6d7bf)",
+    WebkitMaskImage: "linear-gradient(to right, #000 66%, transparent 100%)",
+    maskImage: "linear-gradient(to right, #000 66%, transparent 100%)",
+  };
+  const cloudB: React.CSSProperties = {
+    background:
+      "radial-gradient(55% 45% at 65% 28%, rgba(255,255,255,0.95), transparent 70%)," +
+      "radial-gradient(50% 40% at 38% 62%, rgba(255,248,236,0.92), transparent 72%)," +
+      "radial-gradient(75% 55% at 58% 88%, rgba(243,232,214,0.96), transparent 76%)," +
+      "linear-gradient(200deg, #f7f0e3, #e6d7bf)",
+    WebkitMaskImage: "linear-gradient(to left, #000 66%, transparent 100%)",
+    maskImage: "linear-gradient(to left, #000 66%, transparent 100%)",
+  };
+
+  return (
+    <div className="pointer-events-none fixed inset-0 z-[60] overflow-hidden" aria-hidden>
+      {/* two cloud banks; on completion they drift apart to open the scene */}
+      <div
+        className={`absolute inset-y-0 left-0 w-[58%] transition-transform duration-[1200ms] ease-in-out ${
+          done ? "-translate-x-[112%]" : "translate-x-0"
+        }`}
+        style={cloudA}
+      />
+      <div
+        className={`absolute inset-y-0 right-0 w-[58%] transition-transform duration-[1200ms] ease-in-out ${
+          done ? "translate-x-[112%]" : "translate-x-0"
+        }`}
+        style={cloudB}
+      />
+      {/* wordmark + count, fading as the clouds begin to part */}
+      <div
+        className={`absolute inset-0 flex flex-col items-center justify-center transition-opacity duration-500 ${
+          done ? "opacity-0" : "opacity-100"
+        }`}
+      >
+        <p className="mb-3 text-[10px] uppercase tracking-[0.4em] text-[#6b5743]/70">
+          Three.js · real-time 3D
+        </p>
+        <h2 className="text-3xl font-medium tracking-[-0.03em] text-[#2f3a44] sm:text-4xl">
+          After hours
+        </h2>
+        <p className="mt-5 text-sm tabular-nums tracking-[0.2em] text-[#6b5743]/85">
+          {Math.round(progress)}%
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export default function Home() {
   const reduced = usePrefersReducedMotion();
   // start mid-range; PerformanceMonitor nudges it up on fast GPUs, down when frames drop
@@ -1361,7 +1428,7 @@ export default function Home() {
           <Scene reduced={reduced} night={night} />
         </Suspense>
       </Canvas>
-      <Loader />
+      <SceneLoader />
 
       <div className="pointer-events-none absolute bottom-[9%] left-6 z-10 md:left-12">
         <p className="mb-2 text-[10px] uppercase tracking-[0.35em] text-primary/60">Three.js · real-time 3D</p>
