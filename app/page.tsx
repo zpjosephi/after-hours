@@ -1369,9 +1369,9 @@ export default function Home() {
           className="font-medium leading-[0.9] tracking-[-0.04em] text-primary text-5xl sm:text-6xl md:text-7xl"
           style={{ textShadow: "0 2px 30px rgba(0,0,0,0.55)" }}
         >
-          Above the
+          After
           <br />
-          clouds
+          hours
         </h1>
         <p className="mt-4 text-[11px] tracking-[0.08em] text-primary/55">by zpjosephi</p>
       </div>
