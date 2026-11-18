@@ -13,6 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
+  // og:image needs an absolute URL or link previews skip it
+  metadataBase: new URL("https://afterhours-3d.vercel.app"),
   title: "After hours",
   description:
     "A real-time 3D scene: a coder on a floating island, day into night. By Joseph Irawan.",
